@@ -91,7 +91,11 @@ Player Captain Command: "${command}"`,
 
         if (!openAiResponse.ok) {
           const errData = await openAiResponse.json().catch(() => ({}));
-          throw new Error(errData.error?.message || `OpenAI API returned status ${openAiResponse.status}`);
+          const status = openAiResponse.status >= 400 && openAiResponse.status < 600 ? openAiResponse.status : 500;
+          return res.status(status).json({
+            error: errData.error?.message || `OpenAI API returned status ${openAiResponse.status}`,
+            fallbackNeeded: true,
+          });
         }
 
         const openAiData = await openAiResponse.json();
@@ -100,8 +104,14 @@ Player Captain Command: "${command}"`,
         return res.json(parsed);
       } catch (err: unknown) {
         console.error("OpenAI call error:", err);
-        return res.status(500).json({
-          error: (err as Error).message || "OpenAI execution error",
+        const errObj = err as any;
+        let status = typeof errObj?.status === "number" ? errObj.status : 500;
+        const msg = (err as Error)?.message || "";
+        if (msg.includes("429") || msg.includes("rate limit") || msg.includes("quota")) {
+          status = 429;
+        }
+        return res.status(status >= 400 && status < 600 ? status : 500).json({
+          error: msg || "OpenAI execution error",
           fallbackNeeded: true,
         });
       }
@@ -235,8 +245,14 @@ Interpret the captain's order in character, engage in realistic bridge dialogue 
     res.json(parsed);
   } catch (error: unknown) {
     console.error("Crew command endpoint error:", error);
-    res.status(500).json({
-      error: (error as Error).message || "Internal server error during LLM generation",
+    const errObj = error as any;
+    let status = typeof errObj?.status === "number" ? errObj.status : 500;
+    const msg = (error as Error)?.message || "";
+    if (msg.includes("429") || msg.includes("RESOURCE_EXHAUSTED") || msg.includes("rate limit") || msg.includes("quota")) {
+      status = 429;
+    }
+    res.status(status >= 400 && status < 600 ? status : 500).json({
+      error: msg || "Internal server error during LLM generation",
       fallbackNeeded: true,
     });
   }

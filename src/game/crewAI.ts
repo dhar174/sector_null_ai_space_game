@@ -1,7 +1,147 @@
 import { ShipState, CrewStatus, Encounter, LLMCrewResponse, SettingsState } from '../types';
 
+export interface RetryOptions {
+  /** Maximum number of retry attempts after the initial failure (default: 3) */
+  maxRetries?: number;
+  /** Initial delay before the first retry in milliseconds (default: 600) */
+  initialDelayMs?: number;
+  /** Maximum backoff delay cap in milliseconds (default: 5000) */
+  maxDelayMs?: number;
+  /** Exponential multiplier per retry step (default: 2) */
+  backoffFactor?: number;
+  /** Whether to inject random jitter to avoid synchronized retry bursts (default: true) */
+  jitter?: boolean;
+}
+
+const DEFAULT_RETRY_OPTIONS: Required<RetryOptions> = {
+  maxRetries: 3,
+  initialDelayMs: 600,
+  maxDelayMs: 5000,
+  backoffFactor: 2,
+  jitter: true,
+};
+
+/**
+ * Checks whether an HTTP status code represents a transient condition eligible for retry.
+ * - 429: Too Many Requests / Rate limiting
+ * - 500: Internal Server Error (e.g. temporary downstream model failure)
+ * - 502: Bad Gateway
+ * - 503: Service Unavailable
+ * - 504: Gateway Timeout
+ */
+function isTransientHttpStatus(status: number): boolean {
+  return status === 429 || (status >= 500 && status <= 504);
+}
+
+/**
+ * Pauses execution for a specified duration in milliseconds.
+ */
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Performs POST request to /api/crew-command with exponential backoff for
+ * transient network failures and rate limits.
+ */
+async function fetchCrewCommandWithBackoff(
+  payload: Record<string, unknown>,
+  options?: RetryOptions
+): Promise<Response> {
+  const { maxRetries, initialDelayMs, maxDelayMs, backoffFactor, jitter } = {
+    ...DEFAULT_RETRY_OPTIONS,
+    ...options,
+  };
+
+  let lastError: Error | null = null;
+  let lastResponse: Response | null = null;
+  let nextDelayMs: number | null = null;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    // If a retry was scheduled, apply the exponential backoff delay before re-attempting
+    if (attempt > 0 && nextDelayMs !== null) {
+      console.info(
+        `[CrewAI] Retrying command API in ${Math.round(nextDelayMs)}ms (retry ${attempt}/${maxRetries})...`
+      );
+      await sleep(nextDelayMs);
+    }
+
+    try {
+      const response = await fetch('/api/crew-command', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      // Successful response received
+      if (response.ok) {
+        return response;
+      }
+
+      lastResponse = response;
+
+      // Handle transient errors (Rate limiting 429, or server errors 500-504)
+      if (isTransientHttpStatus(response.status) && attempt < maxRetries) {
+        let delay = initialDelayMs * Math.pow(backoffFactor, attempt);
+
+        // If rate limited, check for standard Retry-After header
+        if (response.status === 429) {
+          const retryAfterHeader = response.headers?.get('Retry-After');
+          if (retryAfterHeader) {
+            const parsedSeconds = parseInt(retryAfterHeader, 10);
+            if (!isNaN(parsedSeconds) && parsedSeconds > 0) {
+              delay = parsedSeconds * 1000;
+            }
+          }
+        }
+
+        // Apply jitter (up to +25% randomization) to prevent stampeding herd
+        if (jitter) {
+          delay += Math.random() * (delay * 0.25);
+        }
+
+        nextDelayMs = Math.min(delay, maxDelayMs);
+        console.warn(
+          `[CrewAI] API returned status ${response.status} (${response.statusText}). Retrying in ${Math.round(nextDelayMs)}ms... (attempt ${attempt + 1}/${maxRetries})`
+        );
+        continue;
+      }
+
+      // Non-transient HTTP errors (e.g. 400 Bad Request, 401 Unauthorized, 403 Forbidden)
+      // or retries exhausted: break immediately to avoid pointless delays
+      break;
+    } catch (err) {
+      // Network drop, timeout, or DNS resolution failure
+      lastError = err as Error;
+
+      if (attempt < maxRetries) {
+        let delay = initialDelayMs * Math.pow(backoffFactor, attempt);
+        if (jitter) {
+          delay += Math.random() * (delay * 0.25);
+        }
+        nextDelayMs = Math.min(delay, maxDelayMs);
+
+        console.warn(
+          `[CrewAI] Transient network error: ${lastError?.message || err}. Retrying in ${Math.round(nextDelayMs)}ms (attempt ${attempt + 1}/${maxRetries})...`
+        );
+        continue;
+      }
+      break;
+    }
+  }
+
+  if (lastResponse) {
+    return lastResponse;
+  }
+
+  throw lastError || new Error('Failed to reach backend AI service after exponential backoff retries.');
+}
+
 /**
  * Dispatches player command to backend LLM route or intelligent simulation engine
+ * with automatic exponential backoff retry for transient network issues or rate limiting.
  */
 export async function sendCrewCommand(
   command: string,
@@ -9,7 +149,8 @@ export async function sendCrewCommand(
   crewStatus: CrewStatus,
   currentEncounter: Encounter | null,
   recentDialogue: Array<{ speaker: string; text: string }>,
-  settings: SettingsState
+  settings: SettingsState,
+  retryOptions?: RetryOptions
 ): Promise<LLMCrewResponse> {
   // If user selected offline simulation mode explicitly
   if (settings.provider === 'simulation') {
@@ -21,25 +162,22 @@ export async function sendCrewCommand(
       ? settings.customOpenAiKey 
       : settings.customGeminiKey;
 
-    const response = await fetch('/api/crew-command', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        command,
-        shipState,
-        crewStatus,
-        currentEncounter,
-        recentHistory: recentDialogue.slice(-4),
-        provider: settings.provider,
-        customKey: customKey || undefined,
-      }),
-    });
+    const payload = {
+      command,
+      shipState,
+      crewStatus,
+      currentEncounter,
+      recentHistory: recentDialogue.slice(-4),
+      provider: settings.provider,
+      customKey: customKey || undefined,
+    };
+
+    // Execute API call with exponential backoff for transient issues or rate limiting
+    const response = await fetchCrewCommandWithBackoff(payload, retryOptions);
 
     if (!response.ok) {
       const errJson = await response.json().catch(() => ({}));
-      console.warn('API error from /api/crew-command, using fallback simulation:', errJson);
+      console.warn('API error from /api/crew-command after backoff retries, using fallback simulation:', errJson);
       return generateSimulatedCrewResponse(command, shipState, crewStatus, currentEncounter);
     }
 
@@ -50,7 +188,7 @@ export async function sendCrewCommand(
 
     return data;
   } catch (err) {
-    console.warn('Network error reaching backend AI, executing crew simulation fallback:', err);
+    console.warn('Network error reaching backend AI after backoff retries, executing crew simulation fallback:', err);
     return generateSimulatedCrewResponse(command, shipState, crewStatus, currentEncounter);
   }
 }
