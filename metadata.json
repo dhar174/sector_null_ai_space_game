@@ -1,6 +1,10 @@
 {
   "name": "Sector Null: AI Crew Space Survival",
   "description": "A top-down 2D space survival game where your starship crew—autonomous AI agents Jax and Elara—interpret your captain orders, converse, and manage ship systems in real time.",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }

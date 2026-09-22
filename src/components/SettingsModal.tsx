@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { SettingsState } from '../types';
-import { X, Key, Cpu, Volume2, ShieldCheck, CheckCircle2, RefreshCw } from 'lucide-react';
+import { X, Key, Cpu, Volume2, ShieldCheck, CheckCircle2, RefreshCw, Mic } from 'lucide-react';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -182,6 +182,20 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               }`}
             />
           </button>
+        </div>
+
+        {/* Web Speech Voice Control Status */}
+        <div className="flex items-center justify-between bg-slate-950/60 p-3 rounded-lg border border-slate-800">
+          <div className="flex items-center gap-2">
+            <Mic className="w-4 h-4 text-cyan-400" />
+            <div>
+              <div className="text-xs font-bold text-slate-200">Web Speech Voice Recognition</div>
+              <div className="text-[11px] text-slate-400">Speak commands directly into microphone to order Jax &amp; Elara</div>
+            </div>
+          </div>
+          <span className="text-[10px] font-terminal px-2 py-0.5 rounded bg-cyan-950/80 border border-cyan-700/60 text-cyan-300 font-bold">
+            SUPPORTED
+          </span>
         </div>
 
         {/* Action Buttons */}
