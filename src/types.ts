@@ -22,6 +22,8 @@ export interface CrewAction {
 }
 
 export interface LLMCrewResponse {
+  routedOfficer?: 'Jax' | 'Elara' | 'Both' | 'Ship AI';
+  intent?: 'action' | 'query' | 'conversation';
   dialogue: Array<{
     speaker: 'Jax' | 'Elara' | 'Ship AI';
     text: string;
@@ -68,6 +70,7 @@ export interface ShipState {
 export interface CrewStatus {
   jaxStress: number; // 0-100
   jaxStatus: 'Nominal' | 'Stressed' | 'Panicking' | 'Focused';
+  elaraStress: number; // 0-100
   elaraCuriosity: number; // 0-100
   elaraStatus: 'Analytical' | 'Intrigued' | 'Fascinated' | 'Alarmed';
 }

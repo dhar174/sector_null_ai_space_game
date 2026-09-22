@@ -139,10 +139,35 @@ export const CommandConsole: React.FC<CommandConsoleProps> = ({
 
       {/* Quick Tactical Directives */}
       <div className="space-y-1.5 mb-2">
-        <span className="text-[10px] font-terminal text-slate-400 uppercase tracking-wider block">
-          QUICK TACTICAL ORDERS:
-        </span>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+        <div className="flex items-center justify-between">
+          <span className="text-[10px] font-terminal text-slate-400 uppercase tracking-wider block">
+            QUICK ORDERS & AGENT INQUIRIES:
+          </span>
+          <span className="text-[10px] font-terminal text-cyan-400/80">
+            LLM ROUTED AGENTS
+          </span>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+          <button
+            type="button"
+            disabled={isLoading}
+            onClick={() => handleQuickDirective('Jax, reduce throttle')}
+            className="flex items-center gap-1.5 px-2 py-1.5 rounded bg-slate-950/70 hover:bg-amber-950/50 border border-amber-800/40 hover:border-amber-500 text-left text-[11px] text-amber-200 transition-colors disabled:opacity-50 cursor-pointer"
+          >
+            <Wrench className="w-3 h-3 text-amber-400 shrink-0" />
+            <span className="truncate">Jax: Reduce Throttle</span>
+          </button>
+
+          <button
+            type="button"
+            disabled={isLoading}
+            onClick={() => handleQuickDirective('Elara, hows your stress?')}
+            className="flex items-center gap-1.5 px-2 py-1.5 rounded bg-slate-950/70 hover:bg-cyan-950/50 border border-cyan-800/40 hover:border-cyan-500 text-left text-[11px] text-cyan-200 transition-colors disabled:opacity-50 cursor-pointer"
+          >
+            <Sparkles className="w-3 h-3 text-cyan-400 shrink-0" />
+            <span className="truncate">Elara: How's Stress?</span>
+          </button>
+
           <button
             type="button"
             disabled={isLoading}
@@ -150,7 +175,7 @@ export const CommandConsole: React.FC<CommandConsoleProps> = ({
             className="flex items-center gap-1.5 px-2 py-1.5 rounded bg-slate-950/70 hover:bg-cyan-950/50 border border-cyan-800/40 hover:border-cyan-500 text-left text-[11px] text-cyan-200 transition-colors disabled:opacity-50 cursor-pointer"
           >
             <Shield className="w-3 h-3 text-cyan-400 shrink-0" />
-            <span className="truncate">Boost Shields</span>
+            <span className="truncate">Elara: Boost Shields</span>
           </button>
 
           <button
@@ -160,7 +185,7 @@ export const CommandConsole: React.FC<CommandConsoleProps> = ({
             className="flex items-center gap-1.5 px-2 py-1.5 rounded bg-slate-950/70 hover:bg-amber-950/50 border border-amber-800/40 hover:border-amber-500 text-left text-[11px] text-amber-200 transition-colors disabled:opacity-50 cursor-pointer"
           >
             <Wrench className="w-3 h-3 text-amber-400 shrink-0" />
-            <span className="truncate">Repair Hull</span>
+            <span className="truncate">Jax: Repair Hull</span>
           </button>
 
           <button
@@ -170,17 +195,7 @@ export const CommandConsole: React.FC<CommandConsoleProps> = ({
             className="flex items-center gap-1.5 px-2 py-1.5 rounded bg-slate-950/70 hover:bg-indigo-950/50 border border-indigo-800/40 hover:border-indigo-500 text-left text-[11px] text-indigo-200 transition-colors disabled:opacity-50 cursor-pointer"
           >
             <Sparkles className="w-3 h-3 text-indigo-400 shrink-0" />
-            <span className="truncate">Scan Anomaly</span>
-          </button>
-
-          <button
-            type="button"
-            disabled={isLoading}
-            onClick={() => handleQuickDirective('Jax, fire full throttle! Max engine burn to Speed 5!')}
-            className="flex items-center gap-1.5 px-2 py-1.5 rounded bg-slate-950/70 hover:bg-rose-950/50 border border-rose-800/40 hover:border-rose-500 text-left text-[11px] text-rose-200 transition-colors disabled:opacity-50 cursor-pointer"
-          >
-            <Zap className="w-3 h-3 text-rose-400 shrink-0" />
-            <span className="truncate">Max Burn (Spd 5)</span>
+            <span className="truncate">Elara: Scan Anomaly</span>
           </button>
 
           <button
@@ -190,7 +205,17 @@ export const CommandConsole: React.FC<CommandConsoleProps> = ({
             className="flex items-center gap-1.5 px-2 py-1.5 rounded bg-slate-950/70 hover:bg-slate-900 border border-slate-700/50 hover:border-slate-500 text-left text-[11px] text-slate-300 transition-colors disabled:opacity-50 cursor-pointer"
           >
             <RefreshCw className="w-3 h-3 text-slate-400 shrink-0" />
-            <span className="truncate">Cut Engines (Stop)</span>
+            <span className="truncate">Jax: Cut Engines (Stop)</span>
+          </button>
+
+          <button
+            type="button"
+            disabled={isLoading}
+            onClick={() => handleQuickDirective('Jax, how are the engines holding up?')}
+            className="flex items-center gap-1.5 px-2 py-1.5 rounded bg-slate-950/70 hover:bg-amber-950/50 border border-amber-800/40 hover:border-amber-500 text-left text-[11px] text-amber-200 transition-colors disabled:opacity-50 cursor-pointer"
+          >
+            <Wrench className="w-3 h-3 text-amber-400 shrink-0" />
+            <span className="truncate">Jax: Engine Status?</span>
           </button>
 
           <button
@@ -200,7 +225,7 @@ export const CommandConsole: React.FC<CommandConsoleProps> = ({
             className="flex items-center gap-1.5 px-2 py-1.5 rounded bg-slate-950/70 hover:bg-teal-950/50 border border-teal-800/40 hover:border-teal-500 text-left text-[11px] text-teal-200 transition-colors disabled:opacity-50 cursor-pointer"
           >
             <Compass className="w-3 h-3 text-teal-400 shrink-0" />
-            <span className="truncate">Evasive Maneuver</span>
+            <span className="truncate">Crew: Evasive Roll</span>
           </button>
         </div>
       </div>

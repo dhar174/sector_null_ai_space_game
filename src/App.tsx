@@ -26,6 +26,7 @@ const INITIAL_SHIP_STATE: ShipState = {
 const INITIAL_CREW_STATUS: CrewStatus = {
   jaxStress: 15,
   jaxStatus: 'Nominal',
+  elaraStress: 12,
   elaraCuriosity: 30,
   elaraStatus: 'Analytical',
 };
@@ -236,12 +237,19 @@ export default function App() {
       // 5. Update crew emotional states dynamically
       setCrew((prevCrew) => {
         let jaxStress = prevCrew.jaxStress;
+        let elaraStress = prevCrew.elaraStress ?? 12;
         let elaraCuriosity = prevCrew.elaraCuriosity;
 
-        // If hull low or speed 5, Jax stress climbs
+        // If hull low, speed 5, or taking heavy hits, Jax stress climbs
         if (ship.hull < 50) jaxStress = Math.min(100, jaxStress + 2);
         else if (ship.speed === 5) jaxStress = Math.min(100, jaxStress + 1);
         else jaxStress = Math.max(10, jaxStress - 0.5);
+
+        // Elara stress climbs under extreme danger, collapsed shields, or hull breaches
+        if (encounter && encounter.dangerLevel === 'Extreme') elaraStress = Math.min(100, elaraStress + 1.8);
+        else if (ship.shields < 20 && encounter) elaraStress = Math.min(100, elaraStress + 1.2);
+        else if (ship.hull < 40) elaraStress = Math.min(100, elaraStress + 1.2);
+        else elaraStress = Math.max(8, elaraStress - 0.5);
 
         // If encounter active, Elara curiosity peaks
         if (encounter) elaraCuriosity = Math.min(100, elaraCuriosity + 2);
@@ -250,11 +258,18 @@ export default function App() {
         const jaxStatus =
           jaxStress > 70 ? 'Panicking' : jaxStress > 40 ? 'Stressed' : 'Nominal';
         const elaraStatus =
-          elaraCuriosity > 75 ? 'Fascinated' : elaraCuriosity > 45 ? 'Intrigued' : 'Analytical';
+          elaraStress > 65
+            ? 'Alarmed'
+            : elaraCuriosity > 75
+            ? 'Fascinated'
+            : elaraCuriosity > 45
+            ? 'Intrigued'
+            : 'Analytical';
 
         return {
           jaxStress: Math.round(jaxStress),
           jaxStatus,
+          elaraStress: Math.round(elaraStress),
           elaraCuriosity: Math.round(elaraCuriosity),
           elaraStatus,
         };

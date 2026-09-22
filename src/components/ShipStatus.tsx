@@ -251,22 +251,44 @@ export const ShipStatus: React.FC<ShipStatusProps> = ({ ship, crew, encounter })
               <span className="text-xs font-bold text-cyan-300 font-display">
                 ELARA — SCIENCE OFFICER
               </span>
-              <span className="text-[10px] font-terminal px-1.5 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-600/40">
+              <span className={`text-[10px] font-terminal px-1.5 py-0.5 rounded ${
+                crew.elaraStatus === 'Alarmed'
+                  ? 'bg-rose-950 text-rose-400 border border-rose-500/60 animate-pulse'
+                  : 'bg-cyan-950 text-cyan-300 border border-cyan-600/40'
+              }`}>
                 {crew.elaraStatus.toUpperCase()}
               </span>
             </div>
             <p className="text-[11px] text-slate-400 leading-snug mt-0.5 font-sans">
-              Cold, logical, fascinated by hazards. Can scan anomalies, modulate shields, siphon energy.
+              Cold, logical, analytical. Modulates shields, scans anomalies, siphons cosmic energy.
             </p>
-            <div className="mt-1.5 flex items-center gap-2">
-              <span className="text-[10px] text-slate-400 font-terminal">CURIOSITY:</span>
-              <div className="flex-1 bg-slate-900 h-1.5 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-cyan-400 rounded-full transition-all"
-                  style={{ width: `${crew.elaraCuriosity}%` }}
-                />
+            <div className="mt-1.5 space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-slate-400 font-terminal w-16">STRESS:</span>
+                <div className="flex-1 bg-slate-900 h-1.5 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all ${
+                      (crew.elaraStress ?? 12) > 60 ? 'bg-rose-500' : 'bg-indigo-400'
+                    }`}
+                    style={{ width: `${crew.elaraStress ?? 12}%` }}
+                  />
+                </div>
+                <span className="text-[10px] text-indigo-300 font-terminal w-8 text-right">
+                  {crew.elaraStress ?? 12}%
+                </span>
               </div>
-              <span className="text-[10px] text-cyan-300 font-terminal">{crew.elaraCuriosity}%</span>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-slate-400 font-terminal w-16">CURIOSITY:</span>
+                <div className="flex-1 bg-slate-900 h-1.5 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-cyan-400 rounded-full transition-all"
+                    style={{ width: `${crew.elaraCuriosity}%` }}
+                  />
+                </div>
+                <span className="text-[10px] text-cyan-300 font-terminal w-8 text-right">
+                  {crew.elaraCuriosity}%
+                </span>
+              </div>
             </div>
           </div>
         </div>
