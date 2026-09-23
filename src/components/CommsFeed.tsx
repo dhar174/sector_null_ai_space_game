@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { CommsMessage } from '../types';
+import { CommsMessage, CrewStatus, IdleTopic } from '../types';
 import {
   MessageSquare,
   Wrench,
@@ -11,7 +11,9 @@ import {
   Trash2,
   AlertTriangle,
   AlertOctagon,
+  Radio,
 } from 'lucide-react';
+import { JaxPortrait, ElaraPortrait, CharacterType } from './CrewPortraits';
 
 interface CommsFeedProps {
   messages: CommsMessage[];
@@ -19,6 +21,10 @@ interface CommsFeedProps {
   onToggleSound: () => void;
   onClearMessages: () => void;
   hull?: number;
+  crew?: CrewStatus;
+  onInspectOfficer?: (officer: CharacterType) => void;
+  activeIdleTopic?: IdleTopic | null;
+  onSelectIdleTopic?: (topic: IdleTopic) => void;
 }
 
 export const CommsFeed: React.FC<CommsFeedProps> = ({
@@ -27,6 +33,10 @@ export const CommsFeed: React.FC<CommsFeedProps> = ({
   onToggleSound,
   onClearMessages,
   hull,
+  crew,
+  onInspectOfficer,
+  activeIdleTopic,
+  onSelectIdleTopic,
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const isHullCritical = typeof hull === 'number' && hull < 20 && hull > 0;
@@ -121,6 +131,24 @@ export const CommsFeed: React.FC<CommsFeedProps> = ({
           >
             {isHullCritical ? 'PRIORITY 1 // RED ALERT' : 'FREQ: 1420.40 MHz // SECURE'}
           </span>
+
+          {/* Idle topic quick badge */}
+          {activeIdleTopic && (
+            <button
+              onClick={() => onSelectIdleTopic?.(activeIdleTopic)}
+              className={`hidden md:flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-terminal border transition-all cursor-pointer ${
+                activeIdleTopic.officer === 'Jax'
+                  ? 'bg-amber-950/70 border-amber-500/60 text-amber-300 hover:bg-amber-900/70'
+                  : 'bg-cyan-950/70 border-cyan-500/60 text-cyan-300 hover:bg-cyan-900/70'
+              }`}
+              title={`Discuss with ${activeIdleTopic.officer}: "${activeIdleTopic.promptSuggestion}"`}
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+              <span className="font-bold uppercase">{activeIdleTopic.officer}:</span>
+              <span className="truncate max-w-[130px]">{activeIdleTopic.title}</span>
+              <span className="underline ml-0.5">DISCUSS &rarr;</span>
+            </button>
+          )}
         </div>
 
         <div className="flex items-center gap-1.5">
@@ -182,42 +210,80 @@ export const CommsFeed: React.FC<CommsFeedProps> = ({
             const style = getSpeakerStyle(msg.speaker, isCritical);
             const isCaptain = msg.speaker === 'Captain';
 
+            const isJax = msg.speaker === 'Jax';
+            const isElara = msg.speaker === 'Elara';
+
             return (
               <div
                 key={msg.id}
-                className={`p-2.5 rounded-lg border text-xs transition-all ${style.bubble} ${
+                className={`p-2.5 rounded-lg border text-xs transition-all flex items-start gap-2.5 ${style.bubble} ${
                   isCaptain ? 'ml-4 bg-sky-950/20 border-sky-800/40' : 'mr-2'
                 }`}
               >
-                <div className="flex items-center justify-between mb-1">
-                  <div className="flex items-center gap-1.5">
-                    <span
-                      className={`px-1.5 py-0.5 rounded border text-[10px] font-terminal font-semibold flex items-center gap-1 ${style.badge}`}
-                    >
-                      {style.icon}
-                      {msg.speaker.toUpperCase()}
-                    </span>
-                    <span className="text-[10px] text-slate-500 font-terminal hidden sm:inline">
-                      [{style.role}]
-                    </span>
-                    {isCritical && (
-                      <span className="px-1.5 py-0.5 rounded bg-rose-900/90 border border-rose-400/80 text-rose-100 text-[9px] font-terminal font-bold animate-pulse flex items-center gap-1">
-                        <AlertTriangle className="w-2.5 h-2.5 text-rose-300" />
-                        CRITICAL
-                      </span>
-                    )}
+                {/* Officer Expressive 2D Portrait Avatar if Jax or Elara */}
+                {isJax && crew && (
+                  <div className="shrink-0 pt-0.5">
+                    <JaxPortrait
+                      stress={crew.jaxStress}
+                      status={crew.jaxStatus}
+                      size={36}
+                      onClick={() => onInspectOfficer && onInspectOfficer('Jax')}
+                    />
                   </div>
-                  <span className={`text-[10px] font-terminal ${isCritical ? 'text-rose-400 font-semibold' : 'text-slate-500'}`}>
-                    {msg.timestamp}
-                  </span>
+                )}
+                {isElara && crew && (
+                  <div className="shrink-0 pt-0.5">
+                    <ElaraPortrait
+                      stress={crew.elaraStress ?? 12}
+                      curiosity={crew.elaraCuriosity}
+                      status={crew.elaraStatus}
+                      size={36}
+                      onClick={() => onInspectOfficer && onInspectOfficer('Elara')}
+                    />
+                  </div>
+                )}
+
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span
+                        className={`px-1.5 py-0.5 rounded border text-[10px] font-terminal font-semibold flex items-center gap-1 ${style.badge}`}
+                      >
+                        {style.icon}
+                        {msg.speaker.toUpperCase()}
+                      </span>
+                      <span className="text-[10px] text-slate-500 font-terminal hidden sm:inline">
+                        [{style.role}]
+                      </span>
+                      {isJax && crew && (
+                        <span className="text-[9px] font-terminal text-amber-400/90 hidden sm:inline">
+                          ({crew.jaxStatus} // {crew.jaxStress}% STR)
+                        </span>
+                      )}
+                      {isElara && crew && (
+                        <span className="text-[9px] font-terminal text-cyan-400/90 hidden sm:inline">
+                          ({crew.elaraStatus} // {crew.elaraStress ?? 12}% STR)
+                        </span>
+                      )}
+                      {isCritical && (
+                        <span className="px-1.5 py-0.5 rounded bg-rose-900/90 border border-rose-400/80 text-rose-100 text-[9px] font-terminal font-bold animate-pulse flex items-center gap-1">
+                          <AlertTriangle className="w-2.5 h-2.5 text-rose-300" />
+                          CRITICAL
+                        </span>
+                      )}
+                    </div>
+                    <span className={`text-[10px] font-terminal ${isCritical ? 'text-rose-400 font-semibold' : 'text-slate-500'}`}>
+                      {msg.timestamp}
+                    </span>
+                  </div>
+                  <p
+                    className={`leading-relaxed font-sans text-xs pl-0.5 ${
+                      isCritical ? 'text-rose-100 font-medium tracking-wide' : 'text-slate-200'
+                    }`}
+                  >
+                    {msg.text}
+                  </p>
                 </div>
-                <p
-                  className={`leading-relaxed font-sans text-xs pl-0.5 ${
-                    isCritical ? 'text-rose-100 font-medium tracking-wide' : 'text-slate-200'
-                  }`}
-                >
-                  {msg.text}
-                </p>
               </div>
             );
           })

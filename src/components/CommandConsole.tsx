@@ -13,14 +13,20 @@ import {
   MicOff,
   AlertCircle,
   Radio,
+  MessageSquare,
 } from 'lucide-react';
 import { useSpeechRecognition } from '../hooks/useSpeechRecognition';
+import { IdleTopic } from '../types';
 
 interface CommandConsoleProps {
   onSendCommand: (command: string) => void;
   isLoading: boolean;
   onOpenSettings: () => void;
   isHullCritical?: boolean;
+  activeIdleTopic?: IdleTopic | null;
+  onSelectIdleTopic?: (topic: IdleTopic) => void;
+  onUserActive?: () => void;
+  onTriggerIdleTopicTest?: () => void;
 }
 
 export const CommandConsole: React.FC<CommandConsoleProps> = ({
@@ -28,6 +34,10 @@ export const CommandConsole: React.FC<CommandConsoleProps> = ({
   isLoading,
   onOpenSettings,
   isHullCritical = false,
+  activeIdleTopic,
+  onSelectIdleTopic,
+  onUserActive,
+  onTriggerIdleTopicTest,
 }) => {
   const [input, setInput] = useState('');
   const [dismissError, setDismissError] = useState(false);
@@ -62,12 +72,14 @@ export const CommandConsole: React.FC<CommandConsoleProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || isLoading) return;
+    onUserActive?.();
     onSendCommand(input.trim());
     setInput('');
   };
 
   const handleQuickDirective = (orderText: string) => {
     if (isLoading) return;
+    onUserActive?.();
     onSendCommand(orderText);
   };
 
@@ -279,6 +291,20 @@ export const CommandConsole: React.FC<CommandConsoleProps> = ({
               {isHullCritical ? 'Test: Stabilize Hull' : 'Test Drill: Breach (<20%)'}
             </span>
           </button>
+
+          {/* Test Idle Topic Trigger Button */}
+          {onTriggerIdleTopicTest && (
+            <button
+              type="button"
+              disabled={isLoading}
+              onClick={onTriggerIdleTopicTest}
+              title="Instantly generate an idle crew conversation topic to test the subtle toast notification & badges"
+              className="flex items-center gap-1.5 px-2 py-1.5 rounded bg-slate-950/70 hover:bg-cyan-950/60 border border-cyan-800/40 hover:border-cyan-500 text-left text-[11px] text-cyan-200 transition-colors disabled:opacity-50 cursor-pointer"
+            >
+              <MessageSquare className="w-3 h-3 text-cyan-400 shrink-0" />
+              <span className="truncate">Test: Idle Chatter</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -338,6 +364,52 @@ export const CommandConsole: React.FC<CommandConsoleProps> = ({
         </div>
       )}
 
+      {/* Idle Crew Topic Available Banner */}
+      {activeIdleTopic && (
+        <div
+          className={`mb-2 px-3 py-2 rounded-lg border flex items-center justify-between gap-3 text-xs font-terminal transition-all animate-in fade-in slide-in-from-top-1 ${
+            activeIdleTopic.officer === 'Jax'
+              ? 'bg-amber-950/40 border-amber-500/60 text-amber-200 shadow-[0_0_12px_rgba(245,158,11,0.15)]'
+              : 'bg-cyan-950/40 border-cyan-500/60 text-cyan-200 shadow-[0_0_12px_rgba(6,182,212,0.15)]'
+          }`}
+        >
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping shrink-0" />
+            <span className="font-bold tracking-wider shrink-0 uppercase">
+              {activeIdleTopic.officer} HAS A THOUGHT:
+            </span>
+            <span className="text-slate-300 italic truncate hidden sm:inline">
+              &ldquo;{activeIdleTopic.snippet}&rdquo;
+            </span>
+            <span className="text-slate-300 font-normal truncate sm:hidden">
+              {activeIdleTopic.title}
+            </span>
+          </div>
+
+          <button
+            type="button"
+            disabled={isLoading}
+            onClick={() => {
+              onUserActive?.();
+              if (onSelectIdleTopic) {
+                onSelectIdleTopic(activeIdleTopic);
+              } else {
+                onSendCommand(activeIdleTopic.promptSuggestion);
+              }
+            }}
+            className={`shrink-0 px-2.5 py-1 rounded text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-sm ${
+              activeIdleTopic.officer === 'Jax'
+                ? 'bg-amber-500 hover:bg-amber-400 text-slate-950'
+                : 'bg-cyan-500 hover:bg-cyan-400 text-slate-950'
+            }`}
+            title={`Ask: "${activeIdleTopic.promptSuggestion}"`}
+          >
+            <MessageSquare className="w-3 h-3 fill-current" />
+            <span>DISCUSS WITH {activeIdleTopic.officer.toUpperCase()}</span>
+          </button>
+        </div>
+      )}
+
       {/* Natural Language Command Form */}
       <form onSubmit={handleSubmit} className="flex-1 flex flex-col justify-end space-y-2">
         <div className="relative">
@@ -347,7 +419,10 @@ export const CommandConsole: React.FC<CommandConsoleProps> = ({
           <input
             type="text"
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={(e) => {
+              setInput(e.target.value);
+              onUserActive?.();
+            }}
             disabled={isLoading}
             placeholder={
               isListening

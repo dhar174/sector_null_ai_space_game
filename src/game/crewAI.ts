@@ -1,4 +1,5 @@
 import { ShipState, CrewStatus, Encounter, LLMCrewResponse, SettingsState, CommsMessage } from '../types';
+import { findMatchingIdleTopicResponse } from './idleTopics';
 
 export interface RetryOptions {
   /** Maximum number of retry attempts after the initial failure (default: 3) */
@@ -359,6 +360,23 @@ export function generateSimulatedCrewResponse(
   const mentionsJax = /\bjax\b|\bengineer\b|\bchief\b/i.test(lower);
   const mentionsElara = /\belara\b|\bscience\b|\bdoctor\b/i.test(lower);
   const mentionsBoth = /\bcrew\b|\bboth\b|\bbridge\b|\ball hands\b|\beveryone\b/i.test(lower);
+
+  // Check for specialized idle crew topic discussion
+  const idleMatch = findMatchingIdleTopicResponse(command);
+  if (idleMatch) {
+    dialogue.push({
+      speaker: idleMatch.officer,
+      text: idleMatch.text,
+    });
+    analysis = `Casual bridge discussion with ${idleMatch.officer} regarding ${idleMatch.topic.title}.`;
+    return {
+      routedOfficer: idleMatch.officer,
+      intent: 'conversation',
+      dialogue,
+      actions: [],
+      analysis,
+    };
+  }
 
   if (mentionsJax && !mentionsElara) {
     routedOfficer = 'Jax';

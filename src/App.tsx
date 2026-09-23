@@ -1,13 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ShipState, CrewStatus, Encounter, CommsMessage, SettingsState } from './types';
+import { ShipState, CrewStatus, Encounter, CommsMessage, SettingsState, IdleTopic } from './types';
 import { ViewportCanvas } from './components/ViewportCanvas';
 import { ShipStatus } from './components/ShipStatus';
 import { CommsFeed } from './components/CommsFeed';
 import { CommandConsole } from './components/CommandConsole';
 import { SettingsModal } from './components/SettingsModal';
 import { GameOverModal } from './components/GameOverModal';
+import { IdleTopicToast } from './components/IdleTopicToast';
 import { SpaceRenderer } from './game/starfield';
 import { generateRandomEncounter } from './game/encounters';
+import { getNextIdleTopic } from './game/idleTopics';
 import {
   sendCrewCommand,
   triggerCriticalHullDialogue,
@@ -16,7 +18,8 @@ import {
   shouldTriggerCriticalHullAlert,
 } from './game/crewAI';
 import { sound } from './utils/audio';
-import { Rocket, Shield, Radio, Sparkles } from 'lucide-react';
+import { Rocket, Shield, Radio, Sparkles, Users, MessageSquare } from 'lucide-react';
+import { OfficerDossierModal, CharacterType, JaxPortrait, ElaraPortrait } from './components/CrewPortraits';
 
 const INITIAL_SHIP_STATE: ShipState = {
   hull: 100,
@@ -48,6 +51,15 @@ export default function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [ordersCount, setOrdersCount] = useState<number>(0);
   const [encountersCount, setEncountersCount] = useState<number>(0);
+  const [dossierOfficer, setDossierOfficer] = useState<CharacterType | null>(null);
+
+  // Idle crew conversation topics system
+  const [activeIdleTopic, setActiveIdleTopic] = useState<IdleTopic | null>(null);
+  const [showIdleToast, setShowIdleToast] = useState<boolean>(false);
+  const hasActiveIdleTopicRef = useRef<boolean>(false);
+  const lastUserActivityRef = useRef<number>(Date.now());
+  const recentIdleTopicsRef = useRef<string[]>([]);
+  const nextIdleCheckTimeRef = useRef<number>(Date.now() + 18000); // 18s initial grace period
 
   const [settings, setSettings] = useState<SettingsState>(() => {
     try {
@@ -342,6 +354,71 @@ export default function App() {
     return () => clearInterval(interval);
   }, [ship.isGameOver, ship.speed, ship.hull, ship.shields, encounter]);
 
+  // Track user activity when captain types or transmits
+  const handleUserActive = () => {
+    lastUserActivityRef.current = Date.now();
+  };
+
+  // Triggers generation of a new context-aware idle conversation topic
+  const triggerNewIdleTopic = (force: boolean = false) => {
+    if (ship.isGameOver) return;
+    const nextTopic = getNextIdleTopic(ship, crew, encounter, recentIdleTopicsRef.current);
+    if (nextTopic) {
+      recentIdleTopicsRef.current = [...recentIdleTopicsRef.current.slice(-6), nextTopic.title];
+      hasActiveIdleTopicRef.current = true;
+      setActiveIdleTopic(nextTopic);
+      setShowIdleToast(true);
+      sound.playIdleChirp(nextTopic.officer);
+      nextIdleCheckTimeRef.current = Date.now() + 32000;
+    }
+  };
+
+  // Select and discuss an idle topic
+  const handleSelectIdleTopic = (topic: IdleTopic) => {
+    lastUserActivityRef.current = Date.now();
+    nextIdleCheckTimeRef.current = Date.now() + 28000;
+    setShowIdleToast(false);
+    hasActiveIdleTopicRef.current = false;
+    setActiveIdleTopic(null);
+
+    // Crew bonding effect: slight stress relief for Jax, curiosity boost for Elara
+    setCrew((prev) => ({
+      ...prev,
+      jaxStress: topic.officer === 'Jax' ? Math.max(8, prev.jaxStress - 6) : prev.jaxStress,
+      elaraCuriosity: topic.officer === 'Elara' ? Math.min(100, prev.elaraCuriosity + 8) : prev.elaraCuriosity,
+      elaraStress: topic.officer === 'Elara' ? Math.max(6, (prev.elaraStress ?? 12) - 4) : prev.elaraStress,
+    }));
+
+    handleSendCommand(topic.promptSuggestion);
+  };
+
+  const handleDismissIdleToast = () => {
+    setShowIdleToast(false);
+    // Topic remains active in UI badges for captain to discuss when ready
+  };
+
+  // Dedicated Idle Chatter detector loop:
+  // When captain has not sent messages for >= 18 seconds, an officer raises a thought
+  useEffect(() => {
+    if (ship.isGameOver) return;
+
+    const idleTimer = setInterval(() => {
+      const now = Date.now();
+      const idleDuration = now - lastUserActivityRef.current;
+
+      if (
+        !hasActiveIdleTopicRef.current &&
+        !isLoading &&
+        now >= nextIdleCheckTimeRef.current &&
+        idleDuration >= 18000
+      ) {
+        triggerNewIdleTopic();
+      }
+    }, 2000);
+
+    return () => clearInterval(idleTimer);
+  }, [ship, crew, encounter, isLoading]);
+
   // Handle Player Command execution
   const handleSendCommand = async (commandText: string) => {
     if (ship.isGameOver || isLoading) return;
@@ -349,6 +426,13 @@ export default function App() {
     sound.playCommsChirp(600);
     setIsLoading(true);
     setOrdersCount((c) => c + 1);
+
+    // Reset idle tracking timer
+    lastUserActivityRef.current = Date.now();
+    nextIdleCheckTimeRef.current = Date.now() + 26000;
+    hasActiveIdleTopicRef.current = false;
+    setActiveIdleTopic(null);
+    setShowIdleToast(false);
 
     const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
@@ -468,6 +552,11 @@ export default function App() {
     setOrdersCount(0);
     setEncountersCount(0);
     nextEncounterDistRef.current = 12;
+    hasActiveIdleTopicRef.current = false;
+    setActiveIdleTopic(null);
+    setShowIdleToast(false);
+    lastUserActivityRef.current = Date.now();
+    nextIdleCheckTimeRef.current = Date.now() + 20000;
 
     const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     setMessages([
@@ -510,8 +599,72 @@ export default function App() {
           </div>
         </div>
 
-        <div className="flex items-center gap-3 text-xs font-terminal">
-          <div className="flex items-center gap-2 bg-slate-900/80 px-2.5 py-1 rounded-md border border-slate-800 text-slate-300">
+        <div className="flex items-center gap-2 sm:gap-3 text-xs font-terminal">
+          {/* Quick Header Officer Telemetry Buttons */}
+          <div className="flex items-center gap-1.5 bg-slate-900/90 p-1 rounded-lg border border-slate-800">
+            {/* Jax Quick Inspector */}
+            <button
+              onClick={() => setDossierOfficer('Jax')}
+              className="flex items-center gap-1.5 px-2 py-0.5 rounded hover:bg-slate-800 transition-colors cursor-pointer group"
+              title="Inspect Chief Engineer Jax"
+            >
+              <JaxPortrait
+                stress={crew.jaxStress}
+                status={crew.jaxStatus}
+                size={22}
+                interactive={false}
+                hasIdleTopic={activeIdleTopic?.officer === 'Jax'}
+                idleTopicSnippet={activeIdleTopic?.officer === 'Jax' ? activeIdleTopic.title : undefined}
+              />
+              <div className="flex flex-col text-left">
+                <span className="text-[10px] font-bold text-amber-300 leading-none group-hover:text-amber-200 flex items-center gap-1">
+                  <span>JAX</span>
+                  {activeIdleTopic?.officer === 'Jax' && (
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" title="Idle topic available" />
+                  )}
+                </span>
+                <span className={`text-[8px] font-mono leading-none ${
+                  crew.jaxStress > 70 ? 'text-rose-400 font-bold' : crew.jaxStress > 35 ? 'text-amber-400' : 'text-slate-400'
+                }`}>
+                  {crew.jaxStatus} ({crew.jaxStress}%)
+                </span>
+              </div>
+            </button>
+
+            <span className="h-4 w-[1px] bg-slate-800" />
+
+            {/* Elara Quick Inspector */}
+            <button
+              onClick={() => setDossierOfficer('Elara')}
+              className="flex items-center gap-1.5 px-2 py-0.5 rounded hover:bg-slate-800 transition-colors cursor-pointer group"
+              title="Inspect Science Officer Elara"
+            >
+              <ElaraPortrait
+                stress={crew.elaraStress ?? 12}
+                curiosity={crew.elaraCuriosity}
+                status={crew.elaraStatus}
+                size={22}
+                interactive={false}
+                hasIdleTopic={activeIdleTopic?.officer === 'Elara'}
+                idleTopicSnippet={activeIdleTopic?.officer === 'Elara' ? activeIdleTopic.title : undefined}
+              />
+              <div className="flex flex-col text-left">
+                <span className="text-[10px] font-bold text-cyan-300 leading-none group-hover:text-cyan-200 flex items-center gap-1">
+                  <span>ELARA</span>
+                  {activeIdleTopic?.officer === 'Elara' && (
+                    <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping" title="Idle topic available" />
+                  )}
+                </span>
+                <span className={`text-[8px] font-mono leading-none ${
+                  (crew.elaraStress ?? 12) > 65 ? 'text-rose-400 font-bold' : 'text-slate-400'
+                }`}>
+                  {crew.elaraStatus} ({crew.elaraStress ?? 12}%)
+                </span>
+              </div>
+            </button>
+          </div>
+
+          <div className="hidden md:flex items-center gap-2 bg-slate-900/80 px-2.5 py-1 rounded-md border border-slate-800 text-slate-300">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
             <span className="text-[11px]">
               AI CREW: <strong className="text-cyan-300">{settings.provider.toUpperCase()}</strong>
@@ -544,6 +697,10 @@ export default function App() {
             ship={ship}
             crew={crew}
             encounter={encounter}
+            onInspectOfficer={setDossierOfficer}
+            onSendCommand={handleSendCommand}
+            activeIdleTopic={activeIdleTopic}
+            onSelectIdleTopic={handleSelectIdleTopic}
           />
         </div>
 
@@ -555,6 +712,10 @@ export default function App() {
             onToggleSound={() => setSettings((s) => ({ ...s, soundEnabled: !s.soundEnabled }))}
             onClearMessages={() => setMessages([])}
             hull={ship.hull}
+            crew={crew}
+            onInspectOfficer={setDossierOfficer}
+            activeIdleTopic={activeIdleTopic}
+            onSelectIdleTopic={handleSelectIdleTopic}
           />
         </div>
 
@@ -565,9 +726,38 @@ export default function App() {
             isLoading={isLoading}
             onOpenSettings={() => setIsSettingsOpen(true)}
             isHullCritical={ship.hull < 20 && ship.hull > 0}
+            activeIdleTopic={activeIdleTopic}
+            onSelectIdleTopic={handleSelectIdleTopic}
+            onUserActive={handleUserActive}
+            onTriggerIdleTopicTest={() => triggerNewIdleTopic(true)}
           />
         </div>
       </main>
+
+      {/* Floating Subtle Idle Conversation Topic Toast Notification */}
+      {showIdleToast && activeIdleTopic && (
+        <div className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-40 max-w-sm sm:max-w-md w-full px-3 pointer-events-auto">
+          <IdleTopicToast
+            topic={activeIdleTopic}
+            crew={crew}
+            onSelectTopic={handleSelectIdleTopic}
+            onDismiss={handleDismissIdleToast}
+          />
+        </div>
+      )}
+
+      {/* Central Officer Dossier & Biometrics Inspection Modal */}
+      {dossierOfficer && (
+        <OfficerDossierModal
+          isOpen={true}
+          onClose={() => setDossierOfficer(null)}
+          officer={dossierOfficer}
+          crew={crew}
+          onSendCommand={handleSendCommand}
+          activeTopic={activeIdleTopic}
+          onSelectTopic={handleSelectIdleTopic}
+        />
+      )}
 
       {/* Settings & Configuration Modal */}
       <SettingsModal

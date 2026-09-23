@@ -1,14 +1,36 @@
-import React from 'react';
-import { ShipState, CrewStatus, Encounter } from '../types';
-import { Shield, Battery, Gauge, Wrench, Sparkles, Activity, AlertOctagon, Radio } from 'lucide-react';
+import React, { useState } from 'react';
+import { ShipState, CrewStatus, Encounter, IdleTopic } from '../types';
+import { Shield, Battery, Gauge, Activity, AlertOctagon, Radio, Info, MessageSquare } from 'lucide-react';
+import { JaxPortrait, ElaraPortrait, OfficerDossierModal, CharacterType } from './CrewPortraits';
 
 interface ShipStatusProps {
   ship: ShipState;
   crew: CrewStatus;
   encounter: Encounter | null;
+  onInspectOfficer?: (officer: CharacterType) => void;
+  onSendCommand?: (command: string) => void;
+  activeIdleTopic?: IdleTopic | null;
+  onSelectIdleTopic?: (topic: IdleTopic) => void;
 }
 
-export const ShipStatus: React.FC<ShipStatusProps> = ({ ship, crew, encounter }) => {
+export const ShipStatus: React.FC<ShipStatusProps> = ({
+  ship,
+  crew,
+  encounter,
+  onInspectOfficer,
+  onSendCommand,
+  activeIdleTopic,
+  onSelectIdleTopic,
+}) => {
+  const [internalInspect, setInternalInspect] = useState<CharacterType | null>(null);
+
+  const handleOpenDossier = (officer: CharacterType) => {
+    if (onInspectOfficer) {
+      onInspectOfficer(officer);
+    } else {
+      setInternalInspect(officer);
+    }
+  };
   // Hull color logic
   const hullColor =
     ship.hull > 60
@@ -201,23 +223,47 @@ export const ShipStatus: React.FC<ShipStatusProps> = ({ ship, crew, encounter })
 
       {/* The AI Crew (The Agents) Status Cards */}
       <div className="space-y-2 pt-1">
-        <span className="text-xs font-terminal text-slate-400 uppercase tracking-wider block">
-          ACTIVE BRIDGE OFFICERS (LLM AUTONOMOUS AGENTS)
-        </span>
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-terminal text-slate-400 uppercase tracking-wider block">
+            ACTIVE BRIDGE OFFICERS (EXPRESSIVE AI CREW)
+          </span>
+          <span className="text-[10px] font-terminal text-cyan-400/80 flex items-center gap-1">
+            <Info className="w-3 h-3" /> CLICK PORTRAIT TO INSPECT
+          </span>
+        </div>
 
         {/* Agent 1: Jax (Chief Engineer) */}
-        <div className="bg-slate-950/80 border border-amber-500/30 rounded-lg p-2.5 flex items-start gap-3">
-          <div className="w-9 h-9 rounded-lg bg-amber-950/80 border border-amber-500/50 flex items-center justify-center shrink-0 text-amber-400 shadow-md">
-            <Wrench className="w-4 h-4" />
+        <div
+          onClick={() => handleOpenDossier('Jax')}
+          className={`bg-slate-950/80 border rounded-xl p-2.5 flex items-start gap-3 transition-all cursor-pointer group shadow-lg ${
+            activeIdleTopic?.officer === 'Jax'
+              ? 'border-amber-500/60 shadow-[0_0_12px_rgba(245,158,11,0.2)] ring-1 ring-amber-500/30'
+              : 'border-amber-500/30 hover:border-amber-400/60'
+          }`}
+        >
+          {/* Expressive 2D Jax Portrait */}
+          <div className="shrink-0">
+            <JaxPortrait
+              stress={crew.jaxStress}
+              status={crew.jaxStatus}
+              size={68}
+              interactive={false}
+              hasIdleTopic={activeIdleTopic?.officer === 'Jax'}
+              idleTopicSnippet={activeIdleTopic?.officer === 'Jax' ? activeIdleTopic.title : undefined}
+            />
           </div>
+
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-amber-300 font-display">
-                JAX — CHIEF ENGINEER
+              <span className="text-xs font-bold text-amber-300 font-display group-hover:text-amber-200 transition-colors flex items-center gap-1.5">
+                <span>JAX — CHIEF ENGINEER</span>
+                {activeIdleTopic?.officer === 'Jax' && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" title="Idle topic available" />
+                )}
               </span>
               <span className={`text-[10px] font-terminal px-1.5 py-0.5 rounded ${
                 crew.jaxStatus === 'Panicking'
-                  ? 'bg-rose-950 text-rose-400 border border-rose-500/60 animate-pulse'
+                  ? 'bg-rose-950 text-rose-400 border border-rose-500/60 animate-pulse font-bold'
                   : crew.jaxStatus === 'Stressed'
                   ? 'bg-amber-950 text-amber-300 border border-amber-600/40'
                   : 'bg-emerald-950 text-emerald-400 border border-emerald-600/40'
@@ -232,28 +278,76 @@ export const ShipStatus: React.FC<ShipStatusProps> = ({ ship, crew, encounter })
               <span className="text-[10px] text-slate-400 font-terminal">STRESS:</span>
               <div className="flex-1 bg-slate-900 h-1.5 rounded-full overflow-hidden">
                 <div
-                  className="h-full bg-amber-500 rounded-full transition-all"
+                  className={`h-full rounded-full transition-all ${
+                    crew.jaxStress > 70 ? 'bg-rose-500' : crew.jaxStress > 35 ? 'bg-amber-400' : 'bg-emerald-400'
+                  }`}
                   style={{ width: `${crew.jaxStress}%` }}
                 />
               </div>
-              <span className="text-[10px] text-amber-400 font-terminal">{crew.jaxStress}%</span>
+              <span className="text-[10px] text-amber-400 font-terminal font-mono">{crew.jaxStress}%</span>
+            </div>
+
+            {/* Subtle Idle Conversation Topic UI Badge / Quick Prompt */}
+            {activeIdleTopic && activeIdleTopic.officer === 'Jax' && (
+              <div
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (onSelectIdleTopic) onSelectIdleTopic(activeIdleTopic);
+                  else if (onSendCommand) onSendCommand(activeIdleTopic.promptSuggestion);
+                }}
+                className="mt-2 p-1.5 rounded-lg bg-amber-950/70 border border-amber-500/60 hover:bg-amber-900/60 transition-colors flex items-center justify-between text-[10px] font-terminal cursor-pointer group/topic"
+                title={`Ask Jax: "${activeIdleTopic.promptSuggestion}"`}
+              >
+                <div className="flex items-center gap-1.5 truncate">
+                  <MessageSquare className="w-3 h-3 text-amber-400 shrink-0" />
+                  <span className="text-amber-200 font-bold truncate">TOPIC: {activeIdleTopic.title}</span>
+                </div>
+                <span className="text-amber-300 font-semibold group-hover/topic:underline shrink-0 ml-2">DISCUSS &rarr;</span>
+              </div>
+            )}
+
+            <div className="mt-1 flex items-center justify-between text-[9px] font-terminal text-slate-500">
+              <span>HEART RATE: <strong className="text-rose-400">{Math.round(68 + (crew.jaxStress / 100) * 88)} BPM</strong></span>
+              <span className="text-amber-400/80 group-hover:underline">OPEN DOSSIER &rarr;</span>
             </div>
           </div>
         </div>
 
         {/* Agent 2: Elara (Science Officer) */}
-        <div className="bg-slate-950/80 border border-cyan-500/30 rounded-lg p-2.5 flex items-start gap-3">
-          <div className="w-9 h-9 rounded-lg bg-cyan-950/80 border border-cyan-500/50 flex items-center justify-center shrink-0 text-cyan-400 shadow-md">
-            <Sparkles className="w-4 h-4" />
+        <div
+          onClick={() => handleOpenDossier('Elara')}
+          className={`bg-slate-950/80 border rounded-xl p-2.5 flex items-start gap-3 transition-all cursor-pointer group shadow-lg ${
+            activeIdleTopic?.officer === 'Elara'
+              ? 'border-cyan-500/60 shadow-[0_0_12px_rgba(6,182,212,0.2)] ring-1 ring-cyan-500/30'
+              : 'border-cyan-500/30 hover:border-cyan-400/60'
+          }`}
+        >
+          {/* Expressive 2D Elara Portrait */}
+          <div className="shrink-0">
+            <ElaraPortrait
+              stress={crew.elaraStress ?? 12}
+              curiosity={crew.elaraCuriosity}
+              status={crew.elaraStatus}
+              size={68}
+              interactive={false}
+              hasIdleTopic={activeIdleTopic?.officer === 'Elara'}
+              idleTopicSnippet={activeIdleTopic?.officer === 'Elara' ? activeIdleTopic.title : undefined}
+            />
           </div>
+
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-cyan-300 font-display">
-                ELARA — SCIENCE OFFICER
+              <span className="text-xs font-bold text-cyan-300 font-display group-hover:text-cyan-200 transition-colors flex items-center gap-1.5">
+                <span>ELARA — SCIENCE OFFICER</span>
+                {activeIdleTopic?.officer === 'Elara' && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping" title="Idle topic available" />
+                )}
               </span>
               <span className={`text-[10px] font-terminal px-1.5 py-0.5 rounded ${
                 crew.elaraStatus === 'Alarmed'
-                  ? 'bg-rose-950 text-rose-400 border border-rose-500/60 animate-pulse'
+                  ? 'bg-rose-950 text-rose-400 border border-rose-500/60 animate-pulse font-bold'
+                  : crew.elaraStatus === 'Fascinated'
+                  ? 'bg-purple-950 text-purple-300 border border-purple-500/60'
                   : 'bg-cyan-950 text-cyan-300 border border-cyan-600/40'
               }`}>
                 {crew.elaraStatus.toUpperCase()}
@@ -273,7 +367,7 @@ export const ShipStatus: React.FC<ShipStatusProps> = ({ ship, crew, encounter })
                     style={{ width: `${crew.elaraStress ?? 12}%` }}
                   />
                 </div>
-                <span className="text-[10px] text-indigo-300 font-terminal w-8 text-right">
+                <span className="text-[10px] text-indigo-300 font-terminal w-8 text-right font-mono">
                   {crew.elaraStress ?? 12}%
                 </span>
               </div>
@@ -285,14 +379,51 @@ export const ShipStatus: React.FC<ShipStatusProps> = ({ ship, crew, encounter })
                     style={{ width: `${crew.elaraCuriosity}%` }}
                   />
                 </div>
-                <span className="text-[10px] text-cyan-300 font-terminal w-8 text-right">
+                <span className="text-[10px] text-cyan-300 font-terminal w-8 text-right font-mono">
                   {crew.elaraCuriosity}%
                 </span>
               </div>
             </div>
+
+            {/* Subtle Idle Conversation Topic UI Badge / Quick Prompt */}
+            {activeIdleTopic && activeIdleTopic.officer === 'Elara' && (
+              <div
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (onSelectIdleTopic) onSelectIdleTopic(activeIdleTopic);
+                  else if (onSendCommand) onSendCommand(activeIdleTopic.promptSuggestion);
+                }}
+                className="mt-2 p-1.5 rounded-lg bg-cyan-950/70 border border-cyan-500/60 hover:bg-cyan-900/60 transition-colors flex items-center justify-between text-[10px] font-terminal cursor-pointer group/topic"
+                title={`Ask Elara: "${activeIdleTopic.promptSuggestion}"`}
+              >
+                <div className="flex items-center gap-1.5 truncate">
+                  <MessageSquare className="w-3 h-3 text-cyan-400 shrink-0" />
+                  <span className="text-cyan-200 font-bold truncate">TOPIC: {activeIdleTopic.title}</span>
+                </div>
+                <span className="text-cyan-300 font-semibold group-hover/topic:underline shrink-0 ml-2">DISCUSS &rarr;</span>
+              </div>
+            )}
+
+            <div className="mt-1 flex items-center justify-between text-[9px] font-terminal text-slate-500">
+              <span>HEART RATE: <strong className="text-rose-400">{Math.round(62 + ((crew.elaraStress ?? 12) / 100) * 78)} BPM</strong></span>
+              <span className="text-cyan-400/80 group-hover:underline">OPEN DOSSIER &rarr;</span>
+            </div>
           </div>
         </div>
       </div>
+
+      {/* Internal Officer Dossier Modal if triggered directly */}
+      {internalInspect && (
+        <OfficerDossierModal
+          isOpen={true}
+          onClose={() => setInternalInspect(null)}
+          officer={internalInspect}
+          crew={crew}
+          onSendCommand={onSendCommand}
+          activeTopic={activeIdleTopic}
+          onSelectTopic={onSelectIdleTopic}
+        />
+      )}
     </div>
   );
 };

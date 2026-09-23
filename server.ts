@@ -27,6 +27,62 @@ app.get("/api/config", (req, res) => {
   });
 });
 
+// API: Generate or synthesize expressive 2D portrait via Imagen / Gemini
+app.post("/api/generate-portrait", async (req, res) => {
+  try {
+    const { character, emotion, stress, customKey } = req.body;
+    const effectiveGeminiKey = customKey || process.env.GEMINI_API_KEY;
+
+    if (!effectiveGeminiKey) {
+      return res.json({
+        success: false,
+        message: "No Gemini/Imagen API key detected. Vector-rendered 2D dynamic portraits are currently active.",
+      });
+    }
+
+    const ai = new GoogleGenAI({
+      apiKey: effectiveGeminiKey,
+      httpOptions: { headers: { "User-Agent": "aistudio-build" } },
+    });
+
+    const prompt = character === "Jax"
+      ? `Expressive 2D sci-fi anime digital art headshot portrait of Jax, Chief Starship Engineer. A grizzled 40-year-old male with short dark beard, amber cybernetic eyepiece over right eye, mechanic collar. Facial expression: ${emotion}, stress level: ${stress}%. 1:1 avatar framing.`
+      : `Expressive 2D sci-fi anime digital art headshot portrait of Elara, Chief Science Officer. Sleek dark teal asymmetrical bob hair, glowing cyan cybernetic temple node, elegant deep navy astrophysics uniform. Facial expression: ${emotion}, stress level: ${stress}%. 1:1 avatar framing.`;
+
+    try {
+      const imgRes = await ai.models.generateContent({
+        model: "gemini-2.5-flash-image",
+        contents: prompt,
+        config: {
+          responseModalities: ["IMAGE"],
+        },
+      });
+
+      const part = imgRes.candidates?.[0]?.content?.parts?.find((p: any) => p.inlineData);
+      if (part && part.inlineData) {
+        return res.json({
+          success: true,
+          imageUrl: `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`,
+          message: `Generated Imagen portrait for ${character} (${emotion})`,
+        });
+      }
+    } catch (genErr: any) {
+      console.warn("Imagen generation notice:", genErr?.message || genErr);
+    }
+
+    // Graceful fallback response when Imagen quota limit is hit
+    return res.json({
+      success: false,
+      message: "Imagen quota limited on current tier. Expressive 2D vector HUD portraits are active and fully responsive to real-time stress and emotional status.",
+    });
+  } catch (error: any) {
+    return res.json({
+      success: false,
+      message: error?.message || "Vector HUD portrait engine active.",
+    });
+  }
+});
+
 // API: Process player command to autonomous AI crew
 app.post("/api/crew-command", async (req, res) => {
   try {

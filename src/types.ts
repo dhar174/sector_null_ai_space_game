@@ -1,3 +1,25 @@
+export interface IdleTopic {
+  id: string;
+  officer: 'Jax' | 'Elara';
+  title: string;
+  hook: string;
+  snippet: string;
+  promptSuggestion: string;
+  dialogueResponse: string;
+  category: 'engineering' | 'science' | 'personal' | 'observation' | 'lore';
+  availableAt: number;
+  conditions?: {
+    minStress?: number;
+    maxStress?: number;
+    minHull?: number;
+    maxHull?: number;
+    minSpeed?: number;
+    maxSpeed?: number;
+    requiresEncounter?: boolean;
+    requiresNoEncounter?: boolean;
+  };
+}
+
 export type SpeakerType = 'Jax' | 'Elara' | 'Captain' | 'Ship AI';
 
 export interface CommsMessage {

@@ -46,6 +46,39 @@ class SoundEngine {
     }
   }
 
+  // Subtle ambient chime when crew member has a new idle topic available
+  public playIdleChirp(officer: 'Jax' | 'Elara' = 'Elara') {
+    if (!this.enabled) return;
+    this.initCtx();
+    if (!this.ctx) return;
+
+    try {
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+
+      // Jax: warmer amber resonance (520Hz -> 650Hz); Elara: crystallised cyan chime (880Hz -> 1320Hz)
+      const baseFreq = officer === 'Jax' ? 523.25 : 880;
+      const secondFreq = officer === 'Jax' ? 659.25 : 1318.5;
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(baseFreq, now);
+      osc.frequency.exponentialRampToValueAtTime(secondFreq, now + 0.1);
+
+      // Gentle non-intrusive volume
+      gain.gain.setValueAtTime(0.04, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
+
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+
+      osc.start(now);
+      osc.stop(now + 0.28);
+    } catch {
+      // Audio playback failsafe
+    }
+  }
+
   // Incoming crew transmission sound (dual-tone)
   public playTransmissionIn(speaker: 'Jax' | 'Elara' | 'Ship AI' | 'Captain') {
     if (!this.enabled) return;
