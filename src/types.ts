@@ -82,3 +82,18 @@ export interface SettingsState {
   model: string;
   soundEnabled: boolean;
 }
+
+export type CameraViewMode = 'tactical' | 'chase' | 'cinematic';
+export type VisualSpectrum = 'optical' | 'thermal' | 'night' | 'wireframe';
+
+export interface DisplayProperties {
+  viewMode: CameraViewMode;
+  spectrum: VisualSpectrum;
+  showFlightVectors: boolean;
+  showNavGrid: boolean;
+  showShieldHexes: boolean;
+  showThrusterTrails: boolean;
+  zoomLevel: number;
+  dynamicBanking: boolean;
+  bloomEffects: boolean;
+}

@@ -1,12 +1,16 @@
-import { ShipState, Encounter } from '../types';
+import { ShipState, Encounter, DisplayProperties, CameraViewMode, VisualSpectrum } from '../types';
 
 interface Star {
   x: number;
   y: number;
+  z: number; // 0 to 1 depth
   size: number;
   speedMultiplier: number;
   alpha: number;
+  baseAlpha: number;
   color: string;
+  twinkleSpeed: number;
+  twinkleOffset: number;
 }
 
 interface Particle {
@@ -19,6 +23,7 @@ interface Particle {
   alpha: number;
   life: number;
   maxLife: number;
+  glow?: boolean;
 }
 
 interface HazardObject {
@@ -32,95 +37,194 @@ interface HazardObject {
   points: number[];
   color: string;
   type: string;
+  pulse?: number;
+}
+
+interface CelestialPlanet {
+  x: number;
+  y: number;
+  radius: number;
+  hue: number;
+  rings: boolean;
+  angle: number;
 }
 
 export class SpaceRenderer {
-  private canvas: HTMLCanvasElement;
+  public canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
   private stars: Star[] = [];
+  private cosmicDust: { x: number; y: number; speed: number; size: number; alpha: number }[] = [];
   private particles: Particle[] = [];
   private hazards: HazardObject[] = [];
-  private animId: number = 0;
   private lastTime: number = 0;
   private scanWaveRadius: number = 0;
   private isScanning: boolean = false;
   public shakeIntensity: number = 0;
+
+  // Flight dynamics & banking
+  private shipVisualX: number = 0;
+  private shipVisualY: number = 0;
+  private shipBankAngle: number = 0; // In radians
+  private targetBankAngle: number = 0;
+  private targetOffsetX: number = 0;
+  private targetOffsetY: number = 0;
+  private currentOffsetX: number = 0;
+  private currentOffsetY: number = 0;
+  private engineGlowPhase: number = 0;
+  private shieldHitTimer: number = 0;
+  private shieldRippleAngle: number = 0;
+
+  // Celestial background feature (drifting gas giant / moon)
+  private planet: CelestialPlanet | null = null;
+
+  // Display properties config
+  public displayProps: DisplayProperties = {
+    viewMode: 'chase',
+    spectrum: 'optical',
+    showFlightVectors: true,
+    showNavGrid: true,
+    showShieldHexes: true,
+    showThrusterTrails: true,
+    zoomLevel: 1.0,
+    dynamicBanking: true,
+    bloomEffects: true,
+  };
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
     const context = canvas.getContext('2d');
     if (!context) throw new Error('2D context unsupported');
     this.ctx = context;
-    this.initStars();
+    this.initEnvironment();
   }
 
-  private initStars() {
-    this.stars = [];
-    const count = 180;
+  public setDisplayProperties(props: Partial<DisplayProperties>) {
+    this.displayProps = { ...this.displayProps, ...props };
+  }
+
+  public setSteeringInput(normX: number, normY: number) {
+    // normX & normY are between -1 and +1
+    this.targetOffsetX = normX * 45;
+    this.targetOffsetY = normY * 25;
+    if (this.displayProps.dynamicBanking) {
+      this.targetBankAngle = normX * 0.32; // up to ~18 degrees bank
+    } else {
+      this.targetBankAngle = 0;
+    }
+  }
+
+  public resetSteering() {
+    this.targetOffsetX = 0;
+    this.targetOffsetY = 0;
+    this.targetBankAngle = 0;
+  }
+
+  private initEnvironment() {
     const w = this.canvas.width || 800;
     const h = this.canvas.height || 600;
 
-    const colors = ['#ffffff', '#bae6fd', '#fef08a', '#e0e7ff', '#7dd3fc'];
+    // 1. Starfield layers
+    this.stars = [];
+    const starCount = 260;
+    const spectralColors = [
+      '#ffffff', // White main sequence
+      '#c7d2fe', // Blue-white giant
+      '#7dd3fc', // Cyan hypergiant
+      '#fef08a', // Yellow dwarf
+      '#fed7aa', // Amber orange
+      '#fca5a5', // Red dwarf
+    ];
 
-    for (let i = 0; i < count; i++) {
+    for (let i = 0; i < starCount; i++) {
+      const z = Math.random();
       this.stars.push({
         x: Math.random() * w,
         y: Math.random() * h,
-        size: Math.random() * 1.8 + 0.6,
-        speedMultiplier: Math.random() * 0.8 + 0.2, // Layer depth
-        alpha: Math.random() * 0.7 + 0.3,
-        color: colors[Math.floor(Math.random() * colors.length)],
+        z,
+        size: (1 - z * 0.6) * 1.8 + 0.5,
+        speedMultiplier: (1 - z * 0.75) * 1.2 + 0.15,
+        alpha: Math.random() * 0.5 + 0.4,
+        baseAlpha: Math.random() * 0.5 + 0.4,
+        color: spectralColors[Math.floor(Math.random() * spectralColors.length)],
+        twinkleSpeed: Math.random() * 3 + 1,
+        twinkleOffset: Math.random() * Math.PI * 2,
       });
     }
+
+    // 2. High-speed Cosmic Dust Motes
+    this.cosmicDust = [];
+    for (let i = 0; i < 40; i++) {
+      this.cosmicDust.push({
+        x: Math.random() * w,
+        y: Math.random() * h,
+        speed: Math.random() * 1.8 + 1.2,
+        size: Math.random() * 1.2 + 0.5,
+        alpha: Math.random() * 0.4 + 0.15,
+      });
+    }
+
+    // 3. Distant celestial body
+    this.planet = {
+      x: w * 0.78,
+      y: h * 0.22,
+      radius: Math.min(w, h) * 0.14,
+      hue: 205, // Azure gas giant with rings
+      rings: true,
+      angle: -0.35,
+    };
   }
 
   public resize(width: number, height: number) {
     this.canvas.width = width;
     this.canvas.height = height;
-    this.initStars();
+    this.initEnvironment();
   }
 
   public triggerShake(amount: number = 10) {
-    this.shakeIntensity = Math.min(25, this.shakeIntensity + amount);
+    this.shakeIntensity = Math.min(28, this.shakeIntensity + amount);
+    this.shieldHitTimer = 1.0;
+    this.shieldRippleAngle = Math.random() * Math.PI * 2;
   }
 
   public triggerScan() {
     this.isScanning = true;
-    this.scanWaveRadius = 10;
+    this.scanWaveRadius = 15;
   }
 
-  public addImpactSparks(x: number, y: number, color: string = '#f87171', count: number = 24) {
+  public addImpactSparks(x: number, y: number, color: string = '#f87171', count: number = 28) {
     for (let i = 0; i < count; i++) {
       const angle = Math.random() * Math.PI * 2;
-      const speed = Math.random() * 4 + 1.5;
+      const speed = Math.random() * 5 + 1.5;
       this.particles.push({
         x,
         y,
         vx: Math.cos(angle) * speed,
         vy: Math.sin(angle) * speed,
-        size: Math.random() * 3 + 1,
+        size: Math.random() * 3.5 + 1.5,
         color,
         alpha: 1,
         life: 0,
-        maxLife: Math.random() * 35 + 20,
+        maxLife: Math.random() * 35 + 25,
+        glow: true,
       });
     }
   }
 
   public addRepairSparks(x: number, y: number) {
-    for (let i = 0; i < 16; i++) {
+    for (let i = 0; i < 20; i++) {
       const angle = Math.random() * Math.PI * 2;
-      const speed = Math.random() * 2.5 + 0.5;
+      const speed = Math.random() * 3 + 0.5;
       this.particles.push({
         x,
         y,
         vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed - 1,
-        size: Math.random() * 2.5 + 1,
+        vy: Math.sin(angle) * speed - 1.2,
+        size: Math.random() * 2.8 + 1,
         color: '#38bdf8',
         alpha: 1,
         life: 0,
-        maxLife: Math.random() * 40 + 20,
+        maxLife: Math.random() * 45 + 20,
+        glow: true,
       });
     }
   }
@@ -137,23 +241,23 @@ export class SpaceRenderer {
     // Spawn hazards if list is empty or doesn't match encounter type
     if (this.hazards.length === 0 || this.hazards[0].type !== encounter.type) {
       this.hazards = [];
-      
+
       if (encounter.type === 'asteroid_field') {
-        const count = 7;
+        const count = 9;
         for (let i = 0; i < count; i++) {
           const points: number[] = [];
-          const numVerts = 8 + Math.floor(Math.random() * 4);
+          const numVerts = 9 + Math.floor(Math.random() * 5);
           for (let p = 0; p < numVerts; p++) {
-            points.push(0.7 + Math.random() * 0.6);
+            points.push(0.65 + Math.random() * 0.65);
           }
           this.hazards.push({
-            x: Math.random() * (w * 0.8) + w * 0.1,
-            y: Math.random() * (h * 0.5) - h * 0.2,
-            vx: (Math.random() - 0.5) * 0.5,
-            vy: Math.random() * 0.4 + 0.3,
-            radius: Math.random() * 22 + 16,
+            x: Math.random() * (w * 0.85) + w * 0.075,
+            y: Math.random() * (h * 0.5) - h * 0.25,
+            vx: (Math.random() - 0.5) * 0.6,
+            vy: Math.random() * 0.4 + 0.35,
+            radius: Math.random() * 26 + 18,
             rotation: Math.random() * Math.PI * 2,
-            rotSpeed: (Math.random() - 0.5) * 0.02,
+            rotSpeed: (Math.random() - 0.5) * 0.025,
             points,
             color: '#64748b',
             type: 'asteroid_field',
@@ -162,38 +266,38 @@ export class SpaceRenderer {
       } else if (encounter.type === 'spatial_anomaly') {
         this.hazards.push({
           x: w * 0.5,
-          y: h * 0.22,
+          y: h * 0.24,
           vx: 0,
-          vy: 0.1,
-          radius: 48,
+          vy: 0.12,
+          radius: 54,
           rotation: 0,
-          rotSpeed: 0.03,
+          rotSpeed: 0.035,
           points: [],
-          color: '#a855f7',
+          color: '#d946ef',
           type: 'spatial_anomaly',
         });
       } else if (encounter.type === 'abandoned_vessel') {
         this.hazards.push({
-          x: w * 0.5,
-          y: h * 0.25,
-          vx: 0.1,
-          vy: 0.15,
-          radius: 36,
-          rotation: 0.2,
-          rotSpeed: 0.005,
+          x: w * 0.52,
+          y: h * 0.26,
+          vx: 0.08,
+          vy: 0.16,
+          radius: 42,
+          rotation: 0.25,
+          rotSpeed: 0.006,
           points: [],
           color: '#94a3b8',
           type: 'abandoned_vessel',
         });
       } else if (encounter.type === 'ion_storm') {
-        const count = 5;
+        const count = 6;
         for (let i = 0; i < count; i++) {
           this.hazards.push({
             x: Math.random() * w,
-            y: Math.random() * (h * 0.4),
-            vx: (Math.random() - 0.5) * 1.5,
-            vy: Math.random() * 0.5 + 0.5,
-            radius: Math.random() * 35 + 25,
+            y: Math.random() * (h * 0.45),
+            vx: (Math.random() - 0.5) * 1.8,
+            vy: Math.random() * 0.6 + 0.4,
+            radius: Math.random() * 45 + 30,
             rotation: 0,
             rotSpeed: 0.02,
             points: [],
@@ -204,12 +308,12 @@ export class SpaceRenderer {
       } else if (encounter.type === 'alien_beacon') {
         this.hazards.push({
           x: w * 0.5,
-          y: h * 0.24,
+          y: h * 0.25,
           vx: 0,
-          vy: 0.08,
-          radius: 30,
+          vy: 0.09,
+          radius: 34,
           rotation: 0,
-          rotSpeed: 0.015,
+          rotSpeed: 0.018,
           points: [],
           color: '#10b981',
           type: 'alien_beacon',
@@ -221,77 +325,331 @@ export class SpaceRenderer {
   public render(ship: ShipState, encounter: Encounter | null, now: number) {
     const dt = this.lastTime ? Math.min((now - this.lastTime) / 1000, 0.1) : 0.016;
     this.lastTime = now;
+    this.engineGlowPhase += dt * (5 + ship.speed * 4);
+
+    if (this.shieldHitTimer > 0) {
+      this.shieldHitTimer = Math.max(0, this.shieldHitTimer - dt * 2.2);
+    }
 
     const w = this.canvas.width;
     const h = this.canvas.height;
     const ctx = this.ctx;
 
-    // Camera shake handling
+    // Smooth flight dynamics lerp
+    this.currentOffsetX += (this.targetOffsetX - this.currentOffsetX) * (dt * 5);
+    this.currentOffsetY += (this.targetOffsetY - this.currentOffsetY) * (dt * 5);
+    this.shipBankAngle += (this.targetBankAngle - this.shipBankAngle) * (dt * 6);
+
     ctx.save();
+
+    // 1. Camera Shake
     if (this.shakeIntensity > 0) {
       const sx = (Math.random() - 0.5) * this.shakeIntensity;
       const sy = (Math.random() - 0.5) * this.shakeIntensity;
       ctx.translate(sx, sy);
-      this.shakeIntensity = Math.max(0, this.shakeIntensity - dt * 25);
+      this.shakeIntensity = Math.max(0, this.shakeIntensity - dt * 22);
     }
 
-    // 1. Dark space backdrop with radial deep blue vignette
-    const bgGrad = ctx.createRadialGradient(w / 2, h / 2, 50, w / 2, h / 2, Math.max(w, h));
-    bgGrad.addColorStop(0, '#0a0f1d');
-    bgGrad.addColorStop(0.7, '#05070e');
-    bgGrad.addColorStop(1, '#020306');
-    ctx.fillStyle = bgGrad;
-    ctx.fillRect(-20, -20, w + 40, h + 40);
+    // 2. Global View Zoom and Mode Offset
+    const zoom = this.displayProps.zoomLevel || 1.0;
+    const centerX = w / 2;
+    const centerY = h / 2;
+    ctx.translate(centerX, centerY);
+    ctx.scale(zoom, zoom);
+    ctx.translate(-centerX, -centerY);
 
-    // 2. Distant colorful cosmic nebula glow
-    const nebulaGrad = ctx.createRadialGradient(w * 0.3, h * 0.35, 10, w * 0.3, h * 0.35, w * 0.5);
-    nebulaGrad.addColorStop(0, 'rgba(56, 189, 248, 0.05)');
-    nebulaGrad.addColorStop(0.5, 'rgba(168, 85, 247, 0.03)');
-    nebulaGrad.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = nebulaGrad;
+    // Mode-specific camera adjustments
+    if (this.displayProps.viewMode === 'chase') {
+      // Slight pitch tilt and forward acceleration zoom
+      const speedPitch = ship.speed * 3.5;
+      ctx.translate(0, -speedPitch);
+    } else if (this.displayProps.viewMode === 'cinematic') {
+      // Gentle floating orbital drift
+      const orbitX = Math.sin(now * 0.0008) * 16;
+      const orbitY = Math.cos(now * 0.0006) * 10;
+      ctx.translate(orbitX, orbitY);
+    }
+
+    // 3. Space Background & Deep Cosmos Rendering
+    this.renderDeepSpace(ctx, w, h, now, ship);
+
+    // 4. Parallax Starfield & Cosmic Dust
+    this.renderStarfield(ctx, w, h, dt, ship, now);
+
+    // 5. Tactical Navigation Grid (if enabled in display properties)
+    if (this.displayProps.showNavGrid) {
+      this.renderNavGrid(ctx, w, h, now, ship);
+    }
+
+    // 6. Hazards & Encounter Entities
+    this.syncHazardsWithEncounter(encounter);
+    this.renderHazards(ctx, w, h, dt, ship, encounter, now);
+
+    // 7. Science Scanner Wave
+    this.renderScannerWave(ctx, w, h, dt);
+
+    // 8. Player Ship Rendering (The StarshipNSV Vanguard)
+    this.renderStarship(ctx, w, h, dt, ship, now);
+
+    // 9. Particles (Exhaust, Sparks, Embers)
+    this.renderParticles(ctx, dt);
+
+    // 10. Sensor Spectrum Filter (Thermal, Night EM, Wireframe Blueprint, or Optical)
+    this.applySpectrumOverlay(ctx, w, h, now);
+
+    // 11. Tactical HUD & Flight Vectors Overlay
+    if (this.displayProps.showFlightVectors) {
+      this.renderTacticalOverlay(ctx, w, h, ship, encounter, now);
+    }
+
+    ctx.restore();
+  }
+
+  private renderDeepSpace(
+    ctx: CanvasRenderingContext2D,
+    w: number,
+    h: number,
+    now: number,
+    ship: ShipState
+  ) {
+    // Deep obsidian space backdrop with radial gradient
+    const bg = ctx.createRadialGradient(w * 0.5, h * 0.5, 30, w * 0.5, h * 0.5, Math.max(w, h));
+    bg.addColorStop(0, '#0a0e1c');
+    bg.addColorStop(0.5, '#050710');
+    bg.addColorStop(1, '#020307');
+    ctx.fillStyle = bg;
+    ctx.fillRect(-60, -60, w + 120, h + 120);
+
+    // Multi-lobe procedural cosmic nebula clouds
+    // Lobe A: Deep Cyan & Sapphire
+    const nA = ctx.createRadialGradient(w * 0.28, h * 0.3, 10, w * 0.28, h * 0.3, w * 0.45);
+    nA.addColorStop(0, 'rgba(14, 165, 233, 0.08)');
+    nA.addColorStop(0.5, 'rgba(99, 102, 241, 0.04)');
+    nA.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    ctx.fillStyle = nA;
     ctx.fillRect(0, 0, w, h);
 
-    // 3. Starfield simulation proportional to speed
-    const baseSpeed = 20;
-    const speedMultiplier = ship.speed === 0 ? 0.3 : ship.speed * 1.5;
-    const starVelocity = baseSpeed * (1 + speedMultiplier * 2.2);
+    // Lobe B: Ethereal Magenta & Cosmic Violet
+    const nB = ctx.createRadialGradient(w * 0.72, h * 0.65, 10, w * 0.72, h * 0.65, w * 0.4);
+    nB.addColorStop(0, 'rgba(217, 70, 239, 0.06)');
+    nB.addColorStop(0.6, 'rgba(147, 51, 234, 0.02)');
+    nB.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    ctx.fillStyle = nB;
+    ctx.fillRect(0, 0, w, h);
 
+    // Render distant ringed gas giant
+    if (this.planet) {
+      const p = this.planet;
+      // Parallax scroll with ship distance
+      const planetY = ((p.y + ship.distance * 8) % (h + p.radius * 4)) - p.radius * 2;
+      const planetX = p.x;
+
+      ctx.save();
+      ctx.translate(planetX, planetY);
+      ctx.rotate(p.angle);
+
+      // Back half of planetary rings
+      if (p.rings) {
+        ctx.save();
+        ctx.scale(1, 0.35);
+        ctx.beginPath();
+        ctx.arc(0, 0, p.radius * 1.85, Math.PI, Math.PI * 2);
+        ctx.lineWidth = p.radius * 0.45;
+        const ringGrad = ctx.createLinearGradient(-p.radius * 2, 0, p.radius * 2, 0);
+        ringGrad.addColorStop(0, 'rgba(186, 230, 253, 0.02)');
+        ringGrad.addColorStop(0.3, 'rgba(186, 230, 253, 0.22)');
+        ringGrad.addColorStop(0.6, 'rgba(125, 211, 252, 0.12)');
+        ringGrad.addColorStop(1, 'rgba(186, 230, 253, 0.02)');
+        ctx.strokeStyle = ringGrad;
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // Planet Sphere with spherical shadow terminator
+      const pGrad = ctx.createRadialGradient(
+        -p.radius * 0.35,
+        -p.radius * 0.35,
+        p.radius * 0.1,
+        0,
+        0,
+        p.radius
+      );
+      pGrad.addColorStop(0, '#38bdf8');
+      pGrad.addColorStop(0.4, '#0369a1');
+      pGrad.addColorStop(0.8, '#082f49');
+      pGrad.addColorStop(1, '#020617');
+
+      ctx.beginPath();
+      ctx.arc(0, 0, p.radius, 0, Math.PI * 2);
+      ctx.fillStyle = pGrad;
+      ctx.fill();
+
+      // Atmospheric limb glow
+      ctx.beginPath();
+      ctx.arc(0, 0, p.radius, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(56, 189, 248, 0.35)';
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+
+      // Front half of rings
+      if (p.rings) {
+        ctx.save();
+        ctx.scale(1, 0.35);
+        ctx.beginPath();
+        ctx.arc(0, 0, p.radius * 1.85, 0, Math.PI);
+        ctx.lineWidth = p.radius * 0.45;
+        const ringGradF = ctx.createLinearGradient(-p.radius * 2, 0, p.radius * 2, 0);
+        ringGradF.addColorStop(0, 'rgba(186, 230, 253, 0.02)');
+        ringGradF.addColorStop(0.3, 'rgba(186, 230, 253, 0.35)');
+        ringGradF.addColorStop(0.6, 'rgba(125, 211, 252, 0.18)');
+        ringGradF.addColorStop(1, 'rgba(186, 230, 253, 0.02)');
+        ctx.strokeStyle = ringGradF;
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      ctx.restore();
+    }
+  }
+
+  private renderStarfield(
+    ctx: CanvasRenderingContext2D,
+    w: number,
+    h: number,
+    dt: number,
+    ship: ShipState,
+    now: number
+  ) {
+    const baseSpeed = 24;
+    const speedMultiplier = ship.speed === 0 ? 0.3 : ship.speed * 1.6;
+    const velocity = baseSpeed * (1 + speedMultiplier * 2.8);
+
+    // 1. Background parallax stars
     for (const star of this.stars) {
-      star.y += starVelocity * star.speedMultiplier * dt;
-      if (star.y > h) {
-        star.y = 0;
+      star.y += velocity * star.speedMultiplier * dt;
+      if (star.y > h + 10) {
+        star.y = -10;
         star.x = Math.random() * w;
       }
 
-      ctx.beginPath();
-      // Draw streak if speed is high
+      // Dynamic twinkle
+      const twinkle = Math.sin(now * 0.001 * star.twinkleSpeed + star.twinkleOffset) * 0.25;
+      const alpha = Math.max(0.15, Math.min(1, star.baseAlpha + twinkle));
+
+      ctx.save();
+      ctx.globalAlpha = alpha;
+
+      // Warp stretch lines if high speed
       if (ship.speed >= 3) {
-        const streakLen = ship.speed * 4 * star.speedMultiplier;
+        const streakLen = Math.min(45, ship.speed * 6 * star.speedMultiplier);
         ctx.strokeStyle = star.color;
-        ctx.globalAlpha = star.alpha;
-        ctx.lineWidth = star.size * 0.8;
+        ctx.lineWidth = star.size * 0.75;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
         ctx.moveTo(star.x, star.y);
         ctx.lineTo(star.x, star.y - streakLen);
         ctx.stroke();
       } else {
         ctx.fillStyle = star.color;
-        ctx.globalAlpha = star.alpha;
+        ctx.beginPath();
         ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
         ctx.fill();
-      }
-    }
-    ctx.globalAlpha = 1;
 
-    // 4. Render encounter hazards
-    this.syncHazardsWithEncounter(encounter);
+        // Star corona glint for brighter stars
+        if (star.size > 1.8) {
+          ctx.strokeStyle = star.color;
+          ctx.globalAlpha = alpha * 0.4;
+          ctx.lineWidth = 0.6;
+          ctx.beginPath();
+          ctx.moveTo(star.x - star.size * 2, star.y);
+          ctx.lineTo(star.x + star.size * 2, star.y);
+          ctx.moveTo(star.x, star.y - star.size * 2);
+          ctx.lineTo(star.x, star.y + star.size * 2);
+          ctx.stroke();
+        }
+      }
+      ctx.restore();
+    }
+
+    // 2. High-speed Cosmic Dust
+    for (const dust of this.cosmicDust) {
+      dust.y += velocity * dust.speed * 1.5 * dt;
+      if (dust.y > h + 20) {
+        dust.y = -20;
+        dust.x = Math.random() * w;
+      }
+
+      ctx.save();
+      ctx.globalAlpha = dust.alpha * (ship.speed > 0 ? 1 : 0.4);
+      const dustLen = Math.max(2, ship.speed * 8 * dust.speed);
+      ctx.strokeStyle = '#bae6fd';
+      ctx.lineWidth = dust.size;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(dust.x, dust.y);
+      ctx.lineTo(dust.x, dust.y - dustLen);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  private renderNavGrid(
+    ctx: CanvasRenderingContext2D,
+    w: number,
+    h: number,
+    now: number,
+    ship: ShipState
+  ) {
+    ctx.save();
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.05)';
+    ctx.lineWidth = 1;
+
+    // Moving vertical & horizontal vector grid lines
+    const gridSize = 48;
+    const gridOffsetY = (now * 0.04 * (ship.speed + 1)) % gridSize;
+
+    for (let x = 0; x < w; x += gridSize) {
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, h);
+      ctx.stroke();
+    }
+
+    for (let y = gridOffsetY; y < h; y += gridSize) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(w, y);
+      ctx.stroke();
+    }
+
+    // Centerline heading marks
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.12)';
+    ctx.setLineDash([4, 12]);
+    ctx.beginPath();
+    ctx.moveTo(w / 2, 0);
+    ctx.lineTo(w / 2, h);
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
+  private renderHazards(
+    ctx: CanvasRenderingContext2D,
+    w: number,
+    h: number,
+    dt: number,
+    ship: ShipState,
+    encounter: Encounter | null,
+    now: number
+  ) {
     for (const haz of this.hazards) {
-      haz.y += (haz.vy + (ship.speed * 0.4)) * 60 * dt;
+      haz.y += (haz.vy + ship.speed * 0.45) * 60 * dt;
       haz.x += haz.vx * 60 * dt;
       haz.rotation += haz.rotSpeed;
 
-      // Wrap around top if dropped off bottom while encounter is active
-      if (haz.y > h + 60 && encounter && encounter.active) {
-        haz.y = -50;
+      // Recycle if dropped off screen
+      if (haz.y > h + 70 && encounter && encounter.active) {
+        haz.y = -60;
         haz.x = Math.random() * (w * 0.8) + w * 0.1;
       }
 
@@ -300,7 +658,7 @@ export class SpaceRenderer {
       ctx.rotate(haz.rotation);
 
       if (haz.type === 'asteroid_field') {
-        // Jagged asteroid polygon
+        // Detailed 3D-shaded Asteroid with craters and rock faceting
         ctx.beginPath();
         const numPts = haz.points.length;
         for (let p = 0; p < numPts; p++) {
@@ -312,139 +670,686 @@ export class SpaceRenderer {
           else ctx.lineTo(px, py);
         }
         ctx.closePath();
-        ctx.fillStyle = '#334155';
+
+        // Light direction gradient (sunlight from top-left)
+        const astGrad = ctx.createLinearGradient(
+          -haz.radius,
+          -haz.radius,
+          haz.radius,
+          haz.radius
+        );
+        astGrad.addColorStop(0, '#64748b');
+        astGrad.addColorStop(0.5, '#334155');
+        astGrad.addColorStop(1, '#0f172a');
+        ctx.fillStyle = astGrad;
         ctx.fill();
-        ctx.strokeStyle = '#64748b';
-        ctx.lineWidth = 2;
+
+        ctx.strokeStyle = '#94a3b8';
+        ctx.lineWidth = 1.5;
         ctx.stroke();
 
-        // Asteroid crater details
+        // Primary Crater with shadow lip
+        ctx.save();
+        ctx.translate(-haz.radius * 0.22, -haz.radius * 0.15);
         ctx.beginPath();
-        ctx.arc(-haz.radius * 0.25, -haz.radius * 0.2, haz.radius * 0.22, 0, Math.PI * 2);
+        ctx.arc(0, 0, haz.radius * 0.28, 0, Math.PI * 2);
         ctx.fillStyle = '#1e293b';
         ctx.fill();
         ctx.strokeStyle = '#475569';
         ctx.lineWidth = 1;
         ctx.stroke();
+        ctx.restore();
+
+        // Secondary small crater
+        ctx.save();
+        ctx.translate(haz.radius * 0.35, haz.radius * 0.3);
+        ctx.beginPath();
+        ctx.arc(0, 0, haz.radius * 0.16, 0, Math.PI * 2);
+        ctx.fillStyle = '#0f172a';
+        ctx.fill();
+        ctx.strokeStyle = '#334155';
+        ctx.lineWidth = 0.8;
+        ctx.stroke();
+        ctx.restore();
       } else if (haz.type === 'spatial_anomaly') {
-        // Swirling vortex rings
-        for (let r = 3; r >= 1; r--) {
-          const ringRad = haz.radius * (r / 3);
-          const grad = ctx.createRadialGradient(0, 0, 5, 0, 0, ringRad);
-          grad.addColorStop(0, 'rgba(236, 72, 153, 0.8)');
-          grad.addColorStop(0.5, 'rgba(168, 85, 247, 0.4)');
-          grad.addColorStop(1, 'rgba(56, 189, 248, 0)');
+        // Gravitational singularity vortex with event horizon
+        for (let r = 4; r >= 1; r--) {
+          const ringRad = haz.radius * (r / 4);
+          const grad = ctx.createRadialGradient(0, 0, 4, 0, 0, ringRad);
+          grad.addColorStop(0, 'rgba(236, 72, 153, 0.7)');
+          grad.addColorStop(0.4, 'rgba(168, 85, 247, 0.4)');
+          grad.addColorStop(0.8, 'rgba(56, 189, 248, 0.15)');
+          grad.addColorStop(1, 'rgba(0,0,0,0)');
           ctx.fillStyle = grad;
           ctx.beginPath();
           ctx.arc(0, 0, ringRad, 0, Math.PI * 2);
           ctx.fill();
         }
-        // Spinning energy tendrils
-        ctx.strokeStyle = '#f472b6';
+
+        // Accretion disk matter spirals
+        ctx.strokeStyle = 'rgba(244, 114, 182, 0.85)';
         ctx.lineWidth = 2;
         for (let a = 0; a < 4; a++) {
           ctx.rotate(Math.PI / 2);
           ctx.beginPath();
           ctx.moveTo(0, 0);
-          ctx.bezierCurveTo(haz.radius * 0.5, haz.radius * 0.2, haz.radius * 0.8, -haz.radius * 0.3, haz.radius * 1.1, 0);
+          ctx.bezierCurveTo(
+            haz.radius * 0.4,
+            haz.radius * 0.25,
+            haz.radius * 0.8,
+            -haz.radius * 0.35,
+            haz.radius * 1.25,
+            0
+          );
           ctx.stroke();
         }
+
+        // Central pitch-black event horizon
+        ctx.fillStyle = '#000000';
+        ctx.beginPath();
+        ctx.arc(0, 0, haz.radius * 0.26, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(236, 72, 153, 0.9)';
+        ctx.lineWidth = 1.8;
+        ctx.stroke();
       } else if (haz.type === 'abandoned_vessel') {
-        // Derelict ship silhouette
+        // High-detail derelict research vessel
         ctx.fillStyle = '#1e293b';
-        ctx.strokeStyle = '#475569';
-        ctx.lineWidth = 2;
-        // Central fuselage
-        ctx.fillRect(-12, -26, 24, 52);
-        ctx.strokeRect(-12, -26, 24, 52);
-        // Broken solar panel
+        ctx.strokeStyle = '#64748b';
+        ctx.lineWidth = 1.5;
+
+        // Command module
+        ctx.fillRect(-14, -30, 28, 60);
+        ctx.strokeRect(-14, -30, 28, 60);
+
+        // Broken fractured solar panel
         ctx.fillStyle = '#0f172a';
-        ctx.fillRect(-34, -8, 22, 16);
-        ctx.strokeRect(-34, -8, 22, 16);
-        // Blinking red emergency beacon
-        if (Math.sin(now * 0.006) > 0) {
+        ctx.fillRect(-38, -12, 24, 20);
+        ctx.strokeRect(-38, -12, 24, 20);
+        // Shattered solar panel frame lines
+        ctx.beginPath();
+        ctx.moveTo(-38, -2);
+        ctx.lineTo(-14, -2);
+        ctx.moveTo(-26, -12);
+        ctx.lineTo(-26, 8);
+        ctx.strokeStyle = '#38bdf8';
+        ctx.lineWidth = 0.8;
+        ctx.stroke();
+
+        // Right detached engine pod
+        ctx.fillStyle = '#1e293b';
+        ctx.fillRect(16, 4, 16, 22);
+        ctx.strokeRect(16, 4, 16, 22);
+
+        // Blinking emergency distress strobe
+        const strobe = Math.sin(now * 0.008) > 0.4;
+        if (strobe) {
           ctx.fillStyle = '#ef4444';
           ctx.beginPath();
-          ctx.arc(0, -20, 3, 0, Math.PI * 2);
+          ctx.arc(0, -22, 3.5, 0, Math.PI * 2);
           ctx.fill();
+          ctx.strokeStyle = 'rgba(239, 68, 68, 0.5)';
+          ctx.lineWidth = 4;
+          ctx.stroke();
         }
       } else if (haz.type === 'ion_storm') {
-        // Ion cloud with electric arcs
-        const grad = ctx.createRadialGradient(0, 0, 2, 0, 0, haz.radius);
-        grad.addColorStop(0, 'rgba(56, 189, 248, 0.4)');
-        grad.addColorStop(0.8, 'rgba(14, 165, 233, 0.15)');
+        // Volumetric electromagnetic plasma cloud
+        const grad = ctx.createRadialGradient(0, 0, 4, 0, 0, haz.radius);
+        grad.addColorStop(0, 'rgba(56, 189, 248, 0.45)');
+        grad.addColorStop(0.5, 'rgba(14, 165, 233, 0.2)');
         grad.addColorStop(1, 'rgba(14, 165, 233, 0)');
         ctx.fillStyle = grad;
         ctx.beginPath();
         ctx.arc(0, 0, haz.radius, 0, Math.PI * 2);
         ctx.fill();
+
+        // Dynamic electric discharge arc
+        if (Math.random() < 0.35) {
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          let lx = (Math.random() - 0.5) * haz.radius * 0.8;
+          let ly = (Math.random() - 0.5) * haz.radius * 0.8;
+          ctx.moveTo(lx, ly);
+          for (let s = 0; s < 3; s++) {
+            lx += (Math.random() - 0.5) * 20;
+            ly += (Math.random() - 0.5) * 20;
+            ctx.lineTo(lx, ly);
+          }
+          ctx.stroke();
+        }
       } else if (haz.type === 'alien_beacon') {
-        // Ancient obsidian obelisk prism
+        // Alien monolith with resonant emerald glyphs
         ctx.fillStyle = '#064e3b';
         ctx.strokeStyle = '#10b981';
         ctx.lineWidth = 2;
         ctx.beginPath();
         ctx.moveTo(0, -haz.radius);
-        ctx.lineTo(haz.radius * 0.6, haz.radius * 0.7);
-        ctx.lineTo(0, haz.radius * 0.4);
-        ctx.lineTo(-haz.radius * 0.6, haz.radius * 0.7);
+        ctx.lineTo(haz.radius * 0.65, haz.radius * 0.7);
+        ctx.lineTo(0, haz.radius * 0.45);
+        ctx.lineTo(-haz.radius * 0.65, haz.radius * 0.7);
         ctx.closePath();
         ctx.fill();
         ctx.stroke();
 
-        // Pulsing emerald core
+        // Pulsing emerald tachyon core
         const pulse = (Math.sin(now * 0.005) + 1) * 0.5;
-        ctx.fillStyle = `rgba(52, 211, 153, ${0.4 + pulse * 0.5})`;
+        const coreGrad = ctx.createRadialGradient(0, 0, 2, 0, 0, 14 + pulse * 6);
+        coreGrad.addColorStop(0, '#a7f3d0');
+        coreGrad.addColorStop(0.4, '#10b981');
+        coreGrad.addColorStop(1, 'rgba(16, 185, 129, 0)');
+        ctx.fillStyle = coreGrad;
         ctx.beginPath();
-        ctx.arc(0, 0, 6 + pulse * 4, 0, Math.PI * 2);
+        ctx.arc(0, 0, 14 + pulse * 6, 0, Math.PI * 2);
         ctx.fill();
       }
 
       ctx.restore();
     }
+  }
 
-    // 5. Science scan wave effect
-    if (this.isScanning) {
-      this.scanWaveRadius += dt * 450;
-      ctx.save();
-      ctx.beginPath();
-      ctx.arc(w / 2, h * 0.7, this.scanWaveRadius, 0, Math.PI * 2);
-      ctx.strokeStyle = 'rgba(56, 189, 248, 0.7)';
-      ctx.lineWidth = 3;
-      ctx.setLineDash([8, 6]);
-      ctx.stroke();
-      ctx.restore();
+  private renderScannerWave(
+    ctx: CanvasRenderingContext2D,
+    w: number,
+    h: number,
+    dt: number
+  ) {
+    if (!this.isScanning) return;
 
-      if (this.scanWaveRadius > Math.max(w, h)) {
-        this.isScanning = false;
-        this.scanWaveRadius = 0;
-      }
+    this.scanWaveRadius += dt * 520;
+    const originX = w / 2 + this.currentOffsetX;
+    const originY = h * 0.72 + this.currentOffsetY;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(originX, originY, this.scanWaveRadius, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.75)';
+    ctx.lineWidth = 2.5;
+    ctx.setLineDash([12, 8]);
+    ctx.stroke();
+
+    // Radar pulse wave echo
+    ctx.beginPath();
+    ctx.arc(originX, originY, Math.max(0, this.scanWaveRadius - 28), 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(14, 165, 233, 0.35)';
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+
+    ctx.restore();
+
+    if (this.scanWaveRadius > Math.max(w, h) * 1.3) {
+      this.isScanning = false;
+      this.scanWaveRadius = 0;
+    }
+  }
+
+  private renderStarship(
+    ctx: CanvasRenderingContext2D,
+    w: number,
+    h: number,
+    dt: number,
+    ship: ShipState,
+    now: number
+  ) {
+    const shipBaseX = w / 2;
+    const shipBaseY = h * 0.72;
+
+    // Ship position incorporating steering offsets & micro-pitch inertia
+    const shipX = shipBaseX + this.currentOffsetX;
+    const microSway = Math.sin(now * 0.002) * 1.5;
+    const shipY = shipBaseY + this.currentOffsetY + microSway;
+
+    this.shipVisualX = shipX;
+    this.shipVisualY = shipY;
+
+    // 1. Emit Thruster Particles based on speed & maneuvering
+    this.emitThrusterParticles(shipX, shipY, ship);
+
+    ctx.save();
+    ctx.translate(shipX, shipY);
+    ctx.rotate(this.shipBankAngle);
+
+    // Dynamic bank scale compression to simulate 3D roll
+    const bankScaleX = Math.cos(this.shipBankAngle * 0.8);
+    ctx.scale(bankScaleX, 1);
+
+    // 2. Deflector Shield Hexagonal Lattice & Impact Shockwaves
+    if (ship.shields > 0 && this.displayProps.showShieldHexes) {
+      this.renderShieldBubble(ctx, ship, now);
     }
 
-    // 6. Draw Player Starship
-    const shipX = w / 2;
-    const shipY = h * 0.72;
+    // 3. Thruster Exhaust Plumes (Dual Heavy Plasma Nacelles)
+    this.renderThrusterPlumes(ctx, ship, now);
 
-    // Thruster exhaust particles
-    if (ship.speed > 0) {
-      const emitRate = ship.speed * 2;
-      for (let i = 0; i < emitRate; i++) {
-        const spread = (Math.random() - 0.5) * 8;
+    // 4. Ship Main Airframe & Wings (NSV Vanguard-9)
+    this.renderShipChassis(ctx, ship, now);
+
+    // 5. Damage Visual Effects (Smoke, electrical short arcs, hull scorch)
+    this.renderShipDamageEffects(ctx, ship, now);
+
+    ctx.restore();
+  }
+
+  private emitThrusterParticles(shipX: number, shipY: number, ship: ShipState) {
+    if (ship.speed <= 0) {
+      // Idle micro-sparks occasionally
+      if (Math.random() < 0.2) {
         this.particles.push({
-          x: shipX + spread,
+          x: shipX + (Math.random() - 0.5) * 16,
           y: shipY + 28,
-          vx: (Math.random() - 0.5) * 1.5,
-          vy: Math.random() * (ship.speed * 3.5 + 2) + 2,
-          size: Math.random() * (ship.speed * 1.2 + 2) + 2,
-          color: ship.speed >= 4 ? '#ec4899' : '#38bdf8',
-          alpha: 0.9,
+          vx: (Math.random() - 0.5) * 0.6,
+          vy: Math.random() * 1.5 + 0.5,
+          size: Math.random() * 1.5 + 0.8,
+          color: '#38bdf8',
+          alpha: 0.6,
           life: 0,
-          maxLife: Math.random() * 20 + 15,
+          maxLife: 18,
+        });
+      }
+      return;
+    }
+
+    // High output engine stream
+    const emitRate = Math.min(8, Math.floor(ship.speed * 1.6 + 1));
+    const nozzleOffsets = [-15, 15]; // Twin engine cowlings
+
+    for (let i = 0; i < emitRate; i++) {
+      const nozzleX = nozzleOffsets[Math.floor(Math.random() * nozzleOffsets.length)];
+      const spreadX = (Math.random() - 0.5) * 5;
+      const speedMult = ship.speed * 2.6 + 2.5;
+
+      const isWarp = ship.speed >= 4;
+      const emberColor = isWarp
+        ? Math.random() < 0.4
+          ? '#e879f9'
+          : '#a855f7'
+        : Math.random() < 0.35
+        ? '#ffffff'
+        : '#38bdf8';
+
+      this.particles.push({
+        x: shipX + nozzleX + spreadX,
+        y: shipY + 28,
+        vx: (Math.random() - 0.5) * 1.8,
+        vy: Math.random() * speedMult + 2,
+        size: Math.random() * (ship.speed * 0.8 + 2.2) + 1.8,
+        color: emberColor,
+        alpha: 0.85,
+        life: 0,
+        maxLife: Math.random() * 18 + 14,
+        glow: true,
+      });
+    }
+
+    // RCS Jet puffs when banking
+    if (Math.abs(this.targetBankAngle) > 0.08) {
+      const rcsSide = this.targetBankAngle > 0 ? -28 : 28;
+      this.particles.push({
+        x: shipX + rcsSide,
+        y: shipY - 5,
+        vx: (this.targetBankAngle > 0 ? -1 : 1) * (Math.random() * 2 + 1.5),
+        vy: (Math.random() - 0.5) * 1.2,
+        size: Math.random() * 2 + 1,
+        color: '#bae6fd',
+        alpha: 0.7,
+        life: 0,
+        maxLife: 12,
+      });
+    }
+  }
+
+  private renderThrusterPlumes(
+    ctx: CanvasRenderingContext2D,
+    ship: ShipState,
+    now: number
+  ) {
+    if (ship.speed === 0) return;
+
+    const engineLength = 18 + ship.speed * 16;
+    const isWarp = ship.speed >= 4;
+    const pulse = Math.sin(this.engineGlowPhase) * 2;
+    const nozzles = [-15, 15];
+
+    for (const nx of nozzles) {
+      ctx.save();
+      ctx.translate(nx, 24);
+
+      // Outer plasma exhaust envelope
+      const envGrad = ctx.createLinearGradient(0, 0, 0, engineLength + pulse);
+      if (isWarp) {
+        envGrad.addColorStop(0, '#f472b6');
+        envGrad.addColorStop(0.3, 'rgba(192, 132, 252, 0.7)');
+        envGrad.addColorStop(1, 'rgba(147, 51, 234, 0)');
+      } else {
+        envGrad.addColorStop(0, '#ffffff');
+        envGrad.addColorStop(0.25, '#38bdf8');
+        envGrad.addColorStop(0.7, 'rgba(14, 165, 233, 0.4)');
+        envGrad.addColorStop(1, 'rgba(3, 105, 161, 0)');
+      }
+
+      ctx.beginPath();
+      ctx.moveTo(-6, 0);
+      ctx.lineTo(6, 0);
+      ctx.lineTo(0, engineLength + pulse);
+      ctx.closePath();
+      ctx.fillStyle = envGrad;
+      ctx.fill();
+
+      // Shock Diamonds (Mach compression diamonds) inside plume
+      const diamondsCount = Math.min(4, Math.floor(ship.speed));
+      ctx.fillStyle = '#ffffff';
+      for (let d = 1; d <= diamondsCount; d++) {
+        const dy = d * (engineLength / (diamondsCount + 1));
+        const dw = Math.max(1.5, 4.5 - d * 0.8);
+        ctx.beginPath();
+        ctx.moveTo(0, dy - 2);
+        ctx.lineTo(dw, dy);
+        ctx.lineTo(0, dy + 2);
+        ctx.lineTo(-dw, dy);
+        ctx.closePath();
+        ctx.fill();
+      }
+
+      ctx.restore();
+    }
+  }
+
+  private renderShipChassis(
+    ctx: CanvasRenderingContext2D,
+    ship: ShipState,
+    now: number
+  ) {
+    // 1. Under-wing shadows and ambient reactor underglow
+    const reactorGrad = ctx.createRadialGradient(0, 5, 2, 0, 5, 34);
+    reactorGrad.addColorStop(0, 'rgba(56, 189, 248, 0.25)');
+    reactorGrad.addColorStop(1, 'rgba(56, 189, 248, 0)');
+    ctx.fillStyle = reactorGrad;
+    ctx.beginPath();
+    ctx.arc(0, 5, 34, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 2. Primary Swept Wings (Titanium-carbon delta structure)
+    ctx.fillStyle = '#090d16'; // Deep stealth composite
+    ctx.strokeStyle = '#1e293b'; // Structural hairline
+    ctx.lineWidth = 1.5;
+
+    ctx.beginPath();
+    ctx.moveTo(0, -38); // Nose cone
+    ctx.lineTo(14, -8); // Forward strake transition
+    ctx.lineTo(34, 16); // Starboard wingtip
+    ctx.lineTo(26, 26); // Starboard trailing edge / flap
+    ctx.lineTo(18, 22); // Starboard thruster mount
+    ctx.lineTo(0, 26); // Rear centerline empennage
+    ctx.lineTo(-18, 22); // Port thruster mount
+    ctx.lineTo(-26, 26); // Port trailing edge
+    ctx.lineTo(-34, 16); // Port wingtip
+    ctx.lineTo(-14, -8); // Port forward strake
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // 3. Wing Leading-Edge Armor Plates (Refined dual-tone panels)
+    ctx.fillStyle = '#1e293b';
+    ctx.strokeStyle = '#38bdf8';
+    ctx.lineWidth = 1.2;
+
+    // Starboard wing armor facet
+    ctx.beginPath();
+    ctx.moveTo(10, -5);
+    ctx.lineTo(30, 14);
+    ctx.lineTo(22, 17);
+    ctx.lineTo(10, 8);
+    ctx.closePath();
+    ctx.fill();
+
+    // Port wing armor facet
+    ctx.beginPath();
+    ctx.moveTo(-10, -5);
+    ctx.lineTo(-30, 14);
+    ctx.lineTo(-22, 17);
+    ctx.lineTo(-10, 8);
+    ctx.closePath();
+    ctx.fill();
+
+    // 4. Central Fuselage Spine & Core Hull
+    const hullGrad = ctx.createLinearGradient(-12, 0, 12, 0);
+    hullGrad.addColorStop(0, '#111827');
+    hullGrad.addColorStop(0.3, '#1e293b');
+    hullGrad.addColorStop(0.5, '#334155');
+    hullGrad.addColorStop(0.7, '#1e293b');
+    hullGrad.addColorStop(1, '#111827');
+    ctx.fillStyle = hullGrad;
+    ctx.strokeStyle = '#0284c7';
+    ctx.lineWidth = 1.5;
+
+    ctx.beginPath();
+    ctx.moveTo(0, -36); // Needle nose
+    ctx.lineTo(9, -12);
+    ctx.lineTo(11, 14);
+    ctx.lineTo(0, 20);
+    ctx.lineTo(-11, 14);
+    ctx.lineTo(-9, -12);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // 5. Dorsal Energy Conduit Pulse Line running down the spine
+    const conduitGlow = Math.sin(this.engineGlowPhase * 0.8) * 0.3 + 0.7;
+    ctx.strokeStyle = `rgba(56, 189, 248, ${conduitGlow})`;
+    ctx.lineWidth = 1.8;
+    ctx.beginPath();
+    ctx.moveTo(0, -28);
+    ctx.lineTo(0, 15);
+    ctx.stroke();
+
+    // 6. Cockpit Glass Canopy (Polarized nano-composite glass with specular sheen)
+    const glassGrad = ctx.createLinearGradient(0, -26, 0, -8);
+    glassGrad.addColorStop(0, '#38bdf8');
+    glassGrad.addColorStop(0.4, '#0284c7');
+    glassGrad.addColorStop(1, '#075985');
+    ctx.fillStyle = glassGrad;
+    ctx.beginPath();
+    ctx.moveTo(0, -26);
+    ctx.lineTo(5, -12);
+    ctx.lineTo(4, -8);
+    ctx.lineTo(-4, -8);
+    ctx.lineTo(-5, -12);
+    ctx.closePath();
+    ctx.fill();
+
+    // Specular Reflection glint across canopy
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+    ctx.beginPath();
+    ctx.moveTo(-1, -24);
+    ctx.lineTo(2, -18);
+    ctx.lineTo(1, -17);
+    ctx.lineTo(-2, -23);
+    ctx.closePath();
+    ctx.fill();
+
+    // 7. Twin Heavy Propulsion Engine Cowlings & Nozzles
+    const nozzles = [-15, 15];
+    for (const nx of nozzles) {
+      // Metallic nozzle ring
+      ctx.fillStyle = '#0f172a';
+      ctx.strokeStyle = '#475569';
+      ctx.lineWidth = 1.2;
+      ctx.fillRect(nx - 4, 18, 8, 7);
+      ctx.strokeRect(nx - 4, 18, 8, 7);
+
+      // Glowing nozzle emitter throat
+      ctx.fillStyle =
+        ship.speed > 0
+          ? ship.speed >= 4
+            ? '#f43f5e'
+            : '#38bdf8'
+          : '#1e293b';
+      ctx.fillRect(nx - 3, 23, 6, 2.5);
+    }
+
+    // 8. Aviation Standard Navigation Strobes
+    // Starboard: Green (Right)
+    const navBlink = Math.sin(now * 0.006) > 0;
+    ctx.fillStyle = navBlink ? '#22c55e' : '#14532d';
+    ctx.beginPath();
+    ctx.arc(33, 16, 2, 0, Math.PI * 2);
+    ctx.fill();
+    if (navBlink) {
+      ctx.strokeStyle = 'rgba(34, 197, 94, 0.6)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+
+    // Port: Red (Left)
+    ctx.fillStyle = navBlink ? '#ef4444' : '#7f1d1d';
+    ctx.beginPath();
+    ctx.arc(-33, 16, 2, 0, Math.PI * 2);
+    ctx.fill();
+    if (navBlink) {
+      ctx.strokeStyle = 'rgba(239, 68, 68, 0.6)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+
+    // White Xenon Anti-collision Strobe (Flash every 1.5s)
+    const xenonFlash = Math.sin(now * 0.004) > 0.85;
+    if (xenonFlash) {
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(0, -35, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
+      ctx.lineWidth = 4;
+      ctx.stroke();
+    }
+  }
+
+  private renderShieldBubble(
+    ctx: CanvasRenderingContext2D,
+    ship: ShipState,
+    now: number
+  ) {
+    const shieldPct = Math.max(0, Math.min(100, ship.shields)) / 100;
+    const baseAlpha = 0.12 + shieldPct * 0.35;
+    const hitBonus = this.shieldHitTimer * 0.5;
+    const alpha = Math.min(0.9, baseAlpha + hitBonus);
+
+    const shieldRadius = 52;
+
+    // Hexagonal deflector lattice
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(0, 0, shieldRadius, 0, Math.PI * 2);
+
+    // Ellipsoidal gradient glow
+    const grad = ctx.createRadialGradient(0, 0, shieldRadius * 0.4, 0, 0, shieldRadius);
+    grad.addColorStop(0, 'rgba(56, 189, 248, 0)');
+    grad.addColorStop(0.8, `rgba(56, 189, 248, ${alpha * 0.4})`);
+    grad.addColorStop(1, `rgba(186, 230, 253, ${alpha})`);
+    ctx.fillStyle = grad;
+    ctx.fill();
+
+    // Shield rim perimeter
+    ctx.strokeStyle = `rgba(186, 230, 253, ${alpha * 1.3})`;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // Draw hex lattice facets along rim
+    ctx.strokeStyle = `rgba(56, 189, 248, ${alpha * 0.6})`;
+    ctx.lineWidth = 1;
+    const hexCount = 12;
+    for (let h = 0; h < hexCount; h++) {
+      const a = (h / hexCount) * Math.PI * 2 + now * 0.0004;
+      const hx = Math.cos(a) * shieldRadius * 0.92;
+      const hy = Math.sin(a) * shieldRadius * 0.92;
+      ctx.beginPath();
+      for (let s = 0; s < 6; s++) {
+        const ha = (s / 6) * Math.PI * 2;
+        const px = hx + Math.cos(ha) * 6;
+        const py = hy + Math.sin(ha) * 6;
+        if (s === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      ctx.stroke();
+    }
+
+    // Impact shockwave ripple
+    if (this.shieldHitTimer > 0) {
+      const rippleRadius = (1 - this.shieldHitTimer) * 45;
+      const rx = Math.cos(this.shieldRippleAngle) * 35;
+      const ry = Math.sin(this.shieldRippleAngle) * 35;
+      ctx.beginPath();
+      ctx.arc(rx, ry, rippleRadius, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(248, 113, 113, ${this.shieldHitTimer})`;
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+
+  private renderShipDamageEffects(
+    ctx: CanvasRenderingContext2D,
+    ship: ShipState,
+    now: number
+  ) {
+    // 1. Scorch marks on wings when hull damaged
+    if (ship.hull < 80) {
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.7)';
+      ctx.beginPath();
+      ctx.arc(-16, 6, 6, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // 2. Coolant smoke vapor when hull < 60
+    if (ship.hull < 60) {
+      if (Math.random() < 0.4) {
+        this.particles.push({
+          x: this.shipVisualX - 14,
+          y: this.shipVisualY + 8,
+          vx: (Math.random() - 0.5) * 1.5 - 1,
+          vy: Math.random() * 2 + 1,
+          size: Math.random() * 4 + 2,
+          color: '#64748b',
+          alpha: 0.5,
+          life: 0,
+          maxLife: 28,
         });
       }
     }
 
-    // Update & draw particles
+    // 3. Electrical arcs and fire short-circuits when hull < 35
+    if (ship.hull < 35) {
+      // Flashing yellow caution strobe on spine
+      const alertFlash = Math.sin(now * 0.012) > 0;
+      if (alertFlash) {
+        ctx.fillStyle = '#f59e0b';
+        ctx.beginPath();
+        ctx.arc(0, 0, 3, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(245, 158, 11, 0.6)';
+        ctx.lineWidth = 6;
+        ctx.stroke();
+      }
+
+      // Spark leap
+      if (Math.random() < 0.35) {
+        ctx.strokeStyle = '#fef08a';
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        let sx = 8;
+        let sy = 5;
+        ctx.moveTo(sx, sy);
+        sx += (Math.random() - 0.5) * 14;
+        sy += (Math.random() - 0.5) * 14;
+        ctx.lineTo(sx, sy);
+        ctx.stroke();
+      }
+    }
+  }
+
+  private renderParticles(ctx: CanvasRenderingContext2D, dt: number) {
     for (let i = this.particles.length - 1; i >= 0; i--) {
       const p = this.particles[i];
       p.life++;
@@ -460,96 +1365,182 @@ export class SpaceRenderer {
       ctx.save();
       ctx.globalAlpha = p.alpha;
       ctx.fillStyle = p.color;
+
+      if (p.glow) {
+        ctx.shadowColor = p.color;
+        ctx.shadowBlur = 8;
+      }
+
       ctx.beginPath();
       ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
     }
+  }
 
-    // Ship Hull rendering
-    ctx.save();
-    ctx.translate(shipX, shipY);
+  private applySpectrumOverlay(
+    ctx: CanvasRenderingContext2D,
+    w: number,
+    h: number,
+    now: number
+  ) {
+    const spectrum = this.displayProps.spectrum;
 
-    // Deflector Shield Bubble
-    if (ship.shields > 0) {
-      const shieldAlpha = Math.min(0.6, 0.15 + (ship.shields / 100) * 0.35);
-      const shieldGrad = ctx.createRadialGradient(0, 0, 20, 0, 0, 48);
-      shieldGrad.addColorStop(0, 'rgba(56, 189, 248, 0)');
-      shieldGrad.addColorStop(0.85, `rgba(56, 189, 248, ${shieldAlpha * 0.4})`);
-      shieldGrad.addColorStop(1, `rgba(56, 189, 248, ${shieldAlpha})`);
-      ctx.fillStyle = shieldGrad;
-      ctx.beginPath();
-      ctx.arc(0, 0, 48, 0, Math.PI * 2);
-      ctx.fill();
+    if (spectrum === 'thermal') {
+      // Amber/Infrared Thermal Sensor tint
+      ctx.save();
+      ctx.globalCompositeOperation = 'screen';
+      ctx.fillStyle = 'rgba(249, 115, 22, 0.12)';
+      ctx.fillRect(-20, -20, w + 40, h + 40);
 
-      // Shield contour ring
-      ctx.strokeStyle = `rgba(186, 230, 253, ${shieldAlpha * 1.2})`;
-      ctx.lineWidth = 1.5;
-      ctx.stroke();
+      // Thermal scan lines
+      ctx.strokeStyle = 'rgba(251, 146, 60, 0.08)';
+      ctx.lineWidth = 1;
+      for (let y = 0; y < h; y += 4) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(w, y);
+        ctx.stroke();
+      }
+      ctx.restore();
+    } else if (spectrum === 'night') {
+      // Night/EM Spectrum Phosphor Green
+      ctx.save();
+      ctx.globalCompositeOperation = 'screen';
+      ctx.fillStyle = 'rgba(34, 197, 94, 0.14)';
+      ctx.fillRect(-20, -20, w + 40, h + 40);
+
+      // Night vision grain & phosphor lines
+      ctx.strokeStyle = 'rgba(74, 222, 128, 0.1)';
+      ctx.lineWidth = 1.2;
+      for (let y = 0; y < h; y += 6) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(w, y);
+        ctx.stroke();
+      }
+      ctx.restore();
+    } else if (spectrum === 'wireframe') {
+      // Tactical Holographic Blueprint Overlay
+      ctx.save();
+      ctx.globalCompositeOperation = 'overlay';
+      ctx.fillStyle = 'rgba(6, 182, 212, 0.18)';
+      ctx.fillRect(-20, -20, w + 40, h + 40);
+
+      // Precision coordinate reticles
+      ctx.strokeStyle = 'rgba(56, 189, 248, 0.2)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([2, 8]);
+      ctx.strokeRect(30, 30, w - 60, h - 60);
+      ctx.restore();
     }
+  }
 
-    // Ship Chassis
-    // Wings
-    ctx.fillStyle = '#0f172a';
-    ctx.strokeStyle = '#0284c7';
-    ctx.lineWidth = 2;
+  private renderTacticalOverlay(
+    ctx: CanvasRenderingContext2D,
+    w: number,
+    h: number,
+    ship: ShipState,
+    encounter: Encounter | null,
+    now: number
+  ) {
+    ctx.save();
+
+    // Flight vector trajectory line forward from the ship
+    const sx = this.shipVisualX;
+    const sy = this.shipVisualY;
+
+    ctx.save();
+    ctx.translate(sx, sy);
+    ctx.rotate(this.shipBankAngle);
+
+    // Forward heading vector beam
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.4)';
+    ctx.lineWidth = 1.2;
+    ctx.setLineDash([6, 8]);
     ctx.beginPath();
-    ctx.moveTo(0, -32); // Nose
-    ctx.lineTo(26, 18);  // Right wingtip
-    ctx.lineTo(16, 26);  // Right thruster bay
-    ctx.lineTo(0, 20);   // Engine centerline
-    ctx.lineTo(-16, 26); // Left thruster bay
-    ctx.lineTo(-26, 18); // Left wingtip
-    ctx.closePath();
-    ctx.fill();
+    ctx.moveTo(0, -38);
+    ctx.lineTo(0, -180);
     ctx.stroke();
 
-    // Inner Armor Plate / Cockpit
-    ctx.fillStyle = '#1e293b';
-    ctx.strokeStyle = '#38bdf8';
-    ctx.lineWidth = 1.5;
+    // Target reticle pip at projected trajectory
     ctx.beginPath();
-    ctx.moveTo(0, -24);
-    ctx.lineTo(12, 10);
-    ctx.lineTo(-12, 10);
-    ctx.closePath();
-    ctx.fill();
+    ctx.arc(0, -140, 6, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.7)';
     ctx.stroke();
-
-    // Cockpit Glass
-    ctx.fillStyle = '#06b6d4';
-    ctx.beginPath();
-    ctx.moveTo(0, -18);
-    ctx.lineTo(6, -4);
-    ctx.lineTo(-6, -4);
-    ctx.closePath();
-    ctx.fill();
-
-    // Thruster engine glow nozzles
-    ctx.fillStyle = ship.speed > 0 ? (ship.speed >= 4 ? '#f43f5e' : '#38bdf8') : '#475569';
-    ctx.fillRect(-12, 22, 6, 4);
-    ctx.fillRect(6, 22, 6, 4);
 
     ctx.restore();
 
-    // 7. Tactical HUD Overlay in Canvas
-    ctx.save();
-    ctx.fillStyle = 'rgba(56, 189, 248, 0.7)';
+    // Corner HUD Telemetry Details
+    ctx.fillStyle = 'rgba(56, 189, 248, 0.8)';
     ctx.font = '10px "JetBrains Mono", monospace';
-    ctx.fillText(`VECTOR: HEADING 000° // SPD: ${ship.speed}`, 16, 24);
+
+    // Compass Vector Heading
+    const headingDeg = Math.round(((now * 0.005) % 360));
+    ctx.fillText(`HEADING: ${String(headingDeg).padStart(3, '0')}° // PITCH: 0.0° // ROLL: ${(this.shipBankAngle * 57.3).toFixed(1)}°`, 16, 24);
+
+    // Active Sensor Mode & Engine Thrust readout
+    ctx.fillText(
+      `SENSOR: [${this.displayProps.spectrum.toUpperCase()}] // CAM: [${this.displayProps.viewMode.toUpperCase()}] // THRUST: ${(ship.speed * 20)}%`,
+      16,
+      38
+    );
+
+    // Hazard lock or deep radar status
     if (encounter && encounter.active) {
-      const dangerColor = 
-        encounter.dangerLevel === 'Extreme' ? '#ef4444' :
-        encounter.dangerLevel === 'Hazardous' ? '#f97316' : '#38bdf8';
+      const dangerColor =
+        encounter.dangerLevel === 'Extreme'
+          ? '#ef4444'
+          : encounter.dangerLevel === 'Hazardous'
+          ? '#f97316'
+          : '#38bdf8';
       ctx.fillStyle = dangerColor;
-      ctx.fillText(`ALERT: ${encounter.title.toUpperCase()}`, 16, 40);
-      ctx.fillText(`RANGE: ${Math.round(encounter.distanceRemaining)} KM`, 16, 54);
+      ctx.fillText(
+        `TACTICAL TARGET: ${encounter.title.toUpperCase()} [${Math.round(encounter.distanceRemaining)} KM]`,
+        16,
+        52
+      );
+
+      // Draw target tracking bracket around encounter center
+      if (this.hazards.length > 0) {
+        const primary = this.hazards[0];
+        ctx.strokeStyle = dangerColor;
+        ctx.lineWidth = 1.5;
+        const bSize = primary.radius + 12;
+
+        ctx.save();
+        ctx.translate(primary.x, primary.y);
+        // Corner brackets
+        const bl = 8;
+        // Top-left
+        ctx.beginPath();
+        ctx.moveTo(-bSize, -bSize + bl);
+        ctx.lineTo(-bSize, -bSize);
+        ctx.lineTo(-bSize + bl, -bSize);
+        // Top-right
+        ctx.moveTo(bSize - bl, -bSize);
+        ctx.lineTo(bSize, -bSize);
+        ctx.lineTo(bSize, -bSize + bl);
+        // Bottom-right
+        ctx.moveTo(bSize, bSize - bl);
+        ctx.lineTo(bSize, bSize);
+        ctx.lineTo(bSize - bl, bSize);
+        // Bottom-left
+        ctx.moveTo(-bSize + bl, bSize);
+        ctx.lineTo(-bSize, bSize);
+        ctx.lineTo(-bSize, bSize - bl);
+        ctx.stroke();
+
+        ctx.font = '9px "JetBrains Mono", monospace';
+        ctx.fillStyle = dangerColor;
+        ctx.fillText(`LOCK: ${encounter.type.toUpperCase()}`, -bSize, -bSize - 5);
+        ctx.restore();
+      }
     } else {
       ctx.fillStyle = '#64748b';
-      ctx.fillText('RADAR: DEEP VOID // NO ACTIVE THREATS', 16, 40);
+      ctx.fillText(`SECTOR: ${ship.sector.toUpperCase()} // SCAN: NOMINAL`, 16, 52);
     }
-    ctx.restore();
 
-    ctx.restore(); // Restore camera shake
+    ctx.restore();
   }
 }

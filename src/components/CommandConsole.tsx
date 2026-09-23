@@ -151,11 +151,21 @@ export const CommandConsole: React.FC<CommandConsoleProps> = ({
           <button
             type="button"
             disabled={isLoading}
-            onClick={() => handleQuickDirective('Jax, reduce throttle')}
+            onClick={() => handleQuickDirective('Jax, engage maximum warp speed!')}
+            className="flex items-center gap-1.5 px-2 py-1.5 rounded bg-slate-950/70 hover:bg-rose-950/50 border border-rose-800/40 hover:border-rose-500 text-left text-[11px] text-rose-200 transition-colors disabled:opacity-50 cursor-pointer"
+          >
+            <Zap className="w-3 h-3 text-rose-400 shrink-0" />
+            <span className="truncate">Jax: Engage Warp 5</span>
+          </button>
+
+          <button
+            type="button"
+            disabled={isLoading}
+            onClick={() => handleQuickDirective('Jax, reduce throttle to cruise')}
             className="flex items-center gap-1.5 px-2 py-1.5 rounded bg-slate-950/70 hover:bg-amber-950/50 border border-amber-800/40 hover:border-amber-500 text-left text-[11px] text-amber-200 transition-colors disabled:opacity-50 cursor-pointer"
           >
             <Wrench className="w-3 h-3 text-amber-400 shrink-0" />
-            <span className="truncate">Jax: Reduce Throttle</span>
+            <span className="truncate">Jax: Cruise Speed 2</span>
           </button>
 
           <button
