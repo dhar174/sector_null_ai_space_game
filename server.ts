@@ -76,6 +76,9 @@ INTENT & ACTION RULES:
 - "action": Captain demands a concrete physical action (e.g. "reduce throttle", "boost shields", "repair hull"). Return the corresponding state delta in "actions".
 - "query" / "conversation": Captain asks a question, checks status, or asks about emotional state (e.g. "Elara, hows your stress?", "Jax, what's engine temp?"). "actions" MUST BE AN EMPTY ARRAY []. The officer must directly answer based on their current telemetry (stress, curiosity, etc.).
 
+CRITICAL HULL STATE (<20%):
+- If shipState.hull < 20, the ship is in extreme distress. All crew dialogue MUST convey acute urgency, panic from Jax regarding collapsing bulkheads, and alarming failure probability calculations from Elara.
+
 Return valid JSON with:
 {
   "routedOfficer": "Jax" | "Elara" | "Both" | "Ship AI",
@@ -193,7 +196,7 @@ Distance to clear: ${Math.round(currentEncounter.distanceRemaining)} km. Scanned
       : "CURRENT ENVIRONMENT: Deep space cruising. Sensors clear of active hazards.";
 
     const promptText = `CURRENT SHIP TELEMETRY:
-- Hull Integrity: ${Math.round(shipState.hull)}%
+- Hull Integrity: ${Math.round(shipState.hull)}%${shipState.hull < 20 ? ' [CRITICAL ALERT: HULL INTEGRITY < 20% - ACUTE DECOMPRESSION RISK! CREW IN PANIC!]' : ''}
 - Auxiliary Energy Grid: ${Math.round(shipState.energy)}%
 - Deflector Shields: ${Math.round(shipState.shields)}%
 - Engine Speed: ${shipState.speed}/5

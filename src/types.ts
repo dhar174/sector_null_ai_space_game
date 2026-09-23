@@ -6,6 +6,8 @@ export interface CommsMessage {
   text: string;
   timestamp: string;
   sentiment?: 'critical' | 'warning' | 'success' | 'info' | 'crew_jax' | 'crew_elara';
+  isUrgent?: boolean;
+  priority?: 'high' | 'critical' | 'normal';
 }
 
 export interface CrewAction {

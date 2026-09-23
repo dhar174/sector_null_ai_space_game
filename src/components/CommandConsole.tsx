@@ -20,12 +20,14 @@ interface CommandConsoleProps {
   onSendCommand: (command: string) => void;
   isLoading: boolean;
   onOpenSettings: () => void;
+  isHullCritical?: boolean;
 }
 
 export const CommandConsole: React.FC<CommandConsoleProps> = ({
   onSendCommand,
   isLoading,
   onOpenSettings,
+  isHullCritical = false,
 }) => {
   const [input, setInput] = useState('');
   const [dismissError, setDismissError] = useState(false);
@@ -72,7 +74,11 @@ export const CommandConsole: React.FC<CommandConsoleProps> = ({
   return (
     <div
       id="command-console-panel"
-      className="flex flex-col h-full bg-[#080c16] border border-cyan-900/40 rounded-xl p-3.5 shadow-xl font-sans"
+      className={`flex flex-col h-full bg-[#080c16] border rounded-xl p-3.5 shadow-xl font-sans transition-all duration-500 ${
+        isHullCritical
+          ? 'border-rose-600/70 shadow-[0_0_20px_rgba(225,29,72,0.2)] ring-1 ring-rose-600/30'
+          : 'border-cyan-900/40'
+      }`}
     >
       {/* Console Top Header */}
       <div className="flex items-center justify-between border-b border-cyan-900/40 pb-2 mb-2">
@@ -192,10 +198,14 @@ export const CommandConsole: React.FC<CommandConsoleProps> = ({
             type="button"
             disabled={isLoading}
             onClick={() => handleQuickDirective('Jax, deploy repair nanites to patch the hull!')}
-            className="flex items-center gap-1.5 px-2 py-1.5 rounded bg-slate-950/70 hover:bg-amber-950/50 border border-amber-800/40 hover:border-amber-500 text-left text-[11px] text-amber-200 transition-colors disabled:opacity-50 cursor-pointer"
+            className={`flex items-center gap-1.5 px-2 py-1.5 rounded border text-left text-[11px] transition-all disabled:opacity-50 cursor-pointer ${
+              isHullCritical
+                ? 'bg-rose-950 border-rose-500 text-rose-100 font-bold shadow-[0_0_10px_rgba(244,63,94,0.4)] animate-pulse'
+                : 'bg-slate-950/70 hover:bg-amber-950/50 border-amber-800/40 hover:border-amber-500 text-amber-200'
+            }`}
           >
-            <Wrench className="w-3 h-3 text-amber-400 shrink-0" />
-            <span className="truncate">Jax: Repair Hull</span>
+            <Wrench className={`w-3 h-3 shrink-0 ${isHullCritical ? 'text-rose-400 animate-spin' : 'text-amber-400'}`} />
+            <span className="truncate">{isHullCritical ? '🚨 Jax: REPAIR HULL NOW!' : 'Jax: Repair Hull'}</span>
           </button>
 
           <button
@@ -222,10 +232,14 @@ export const CommandConsole: React.FC<CommandConsoleProps> = ({
             type="button"
             disabled={isLoading}
             onClick={() => handleQuickDirective('Jax, how are the engines holding up?')}
-            className="flex items-center gap-1.5 px-2 py-1.5 rounded bg-slate-950/70 hover:bg-amber-950/50 border border-amber-800/40 hover:border-amber-500 text-left text-[11px] text-amber-200 transition-colors disabled:opacity-50 cursor-pointer"
+            className={`flex items-center gap-1.5 px-2 py-1.5 rounded border text-left text-[11px] transition-colors disabled:opacity-50 cursor-pointer ${
+              isHullCritical
+                ? 'bg-amber-950/80 border-amber-500 text-amber-100 font-semibold'
+                : 'bg-slate-950/70 hover:bg-amber-950/50 border-amber-800/40 hover:border-amber-500 text-amber-200'
+            }`}
           >
             <Wrench className="w-3 h-3 text-amber-400 shrink-0" />
-            <span className="truncate">Jax: Engine Status?</span>
+            <span className="truncate">{isHullCritical ? 'Jax: Hull & Engine Check' : 'Jax: Engine Status?'}</span>
           </button>
 
           <button
@@ -236,6 +250,34 @@ export const CommandConsole: React.FC<CommandConsoleProps> = ({
           >
             <Compass className="w-3 h-3 text-teal-400 shrink-0" />
             <span className="truncate">Crew: Evasive Roll</span>
+          </button>
+
+          {/* Critical Hull Simulation Drill Button */}
+          <button
+            type="button"
+            disabled={isLoading}
+            onClick={() =>
+              handleQuickDirective(
+                isHullCritical
+                  ? 'Jax, deploy repair nanites to patch the hull!'
+                  : 'Simulate emergency hull breach below 20%!'
+              )
+            }
+            title={
+              isHullCritical
+                ? 'Deploy emergency nanite patches to stabilize hull above 20%'
+                : 'Test trigger: simulates a controlled hull breach to 15% to test <20% critical comms'
+            }
+            className={`flex items-center gap-1.5 px-2 py-1.5 rounded border text-left text-[11px] transition-all disabled:opacity-50 cursor-pointer ${
+              isHullCritical
+                ? 'bg-emerald-950/70 hover:bg-emerald-900 border-emerald-600/60 text-emerald-200'
+                : 'bg-rose-950/40 hover:bg-rose-900/60 border-rose-800/50 text-rose-300'
+            }`}
+          >
+            <Radio className={`w-3 h-3 shrink-0 ${isHullCritical ? 'text-emerald-400' : 'text-rose-400'}`} />
+            <span className="truncate">
+              {isHullCritical ? 'Test: Stabilize Hull' : 'Test Drill: Breach (<20%)'}
+            </span>
           </button>
         </div>
       </div>
@@ -310,6 +352,8 @@ export const CommandConsole: React.FC<CommandConsoleProps> = ({
             placeholder={
               isListening
                 ? '🎙️ Listening to Captain voice... Speak command now'
+                : isHullCritical
+                ? '🚨 HULL CRITICAL (<20%)! Order Jax to repair hull or cut engines!'
                 : "Type or click MIC to speak orders (e.g. 'Jax, divert power to shields')..."
             }
             className={`w-full bg-slate-950 border rounded-lg pl-14 pr-32 py-2.5 text-xs font-terminal text-slate-100 placeholder:text-slate-500 focus:outline-none transition-all shadow-inner ${

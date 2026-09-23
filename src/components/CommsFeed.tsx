@@ -1,12 +1,24 @@
 import React, { useEffect, useRef } from 'react';
 import { CommsMessage } from '../types';
-import { MessageSquare, Wrench, Sparkles, Terminal, UserCheck, Volume2, VolumeX, Trash2 } from 'lucide-react';
+import {
+  MessageSquare,
+  Wrench,
+  Sparkles,
+  Terminal,
+  UserCheck,
+  Volume2,
+  VolumeX,
+  Trash2,
+  AlertTriangle,
+  AlertOctagon,
+} from 'lucide-react';
 
 interface CommsFeedProps {
   messages: CommsMessage[];
   soundEnabled: boolean;
   onToggleSound: () => void;
   onClearMessages: () => void;
+  hull?: number;
 }
 
 export const CommsFeed: React.FC<CommsFeedProps> = ({
@@ -14,8 +26,10 @@ export const CommsFeed: React.FC<CommsFeedProps> = ({
   soundEnabled,
   onToggleSound,
   onClearMessages,
+  hull,
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const isHullCritical = typeof hull === 'number' && hull < 20 && hull > 0;
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -23,7 +37,17 @@ export const CommsFeed: React.FC<CommsFeedProps> = ({
     }
   }, [messages]);
 
-  const getSpeakerStyle = (speaker: string) => {
+  const getSpeakerStyle = (speaker: string, isCritical?: boolean) => {
+    if (isCritical) {
+      return {
+        badge: 'bg-rose-950/90 border-rose-500 text-rose-200 shadow-sm shadow-rose-900/60',
+        bubble: 'bg-gradient-to-r from-rose-950/70 via-rose-900/40 to-rose-950/70 border-rose-500/80 text-rose-100 shadow-[0_0_12px_rgba(244,63,94,0.25)] ring-1 ring-rose-500/40',
+        name: 'text-rose-300',
+        icon: <AlertOctagon className="w-3.5 h-3.5 text-rose-400 animate-pulse" />,
+        role: 'EMERGENCY COMM',
+      };
+    }
+
     switch (speaker) {
       case 'Jax':
         return {
@@ -63,17 +87,39 @@ export const CommsFeed: React.FC<CommsFeedProps> = ({
   return (
     <div
       id="comms-feed-panel"
-      className="flex flex-col h-full bg-[#080b14] border border-cyan-900/40 rounded-xl p-3.5 shadow-xl font-sans"
+      className={`flex flex-col h-full bg-[#080b14] border rounded-xl p-3.5 shadow-xl font-sans transition-all duration-500 ${
+        isHullCritical
+          ? 'border-rose-600/70 shadow-[0_0_25px_rgba(225,29,72,0.2)] ring-1 ring-rose-600/30'
+          : 'border-cyan-900/40'
+      }`}
     >
       {/* Comms Bar Header */}
-      <div className="flex items-center justify-between border-b border-cyan-900/40 pb-2.5 mb-2.5">
+      <div
+        className={`flex items-center justify-between border-b pb-2.5 mb-2.5 transition-colors ${
+          isHullCritical ? 'border-rose-800/60' : 'border-cyan-900/40'
+        }`}
+      >
         <div className="flex items-center gap-2">
-          <MessageSquare className="w-4 h-4 text-cyan-400" />
-          <h3 className="text-xs font-bold font-display uppercase tracking-wider text-slate-100">
+          {isHullCritical ? (
+            <AlertTriangle className="w-4 h-4 text-rose-400 animate-bounce" />
+          ) : (
+            <MessageSquare className="w-4 h-4 text-cyan-400" />
+          )}
+          <h3
+            className={`text-xs font-bold font-display uppercase tracking-wider ${
+              isHullCritical ? 'text-rose-200' : 'text-slate-100'
+            }`}
+          >
             Tactical Bridge Comms Feed
           </h3>
-          <span className="text-[10px] font-terminal text-cyan-400/70 bg-cyan-950/60 px-2 py-0.5 rounded border border-cyan-800/40">
-            FREQ: 1420.40 MHz // SECURE
+          <span
+            className={`text-[10px] font-terminal px-2 py-0.5 rounded border transition-colors ${
+              isHullCritical
+                ? 'text-rose-300 bg-rose-950/80 border-rose-500/60 animate-pulse font-bold'
+                : 'text-cyan-400/70 bg-cyan-950/60 border-cyan-800/40'
+            }`}
+          >
+            {isHullCritical ? 'PRIORITY 1 // RED ALERT' : 'FREQ: 1420.40 MHz // SECURE'}
           </span>
         </div>
 
@@ -95,6 +141,27 @@ export const CommsFeed: React.FC<CommsFeedProps> = ({
         </div>
       </div>
 
+      {/* Emergency Sticky Banner when hull is critical (<20%) */}
+      {isHullCritical && (
+        <div className="mb-2.5 px-3 py-2 rounded-lg bg-gradient-to-r from-rose-950/95 via-rose-900/60 to-rose-950/95 border border-rose-500 text-rose-100 flex items-center justify-between shadow-[0_0_15px_rgba(244,63,94,0.35)] animate-pulse shrink-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <AlertOctagon className="w-4 h-4 text-rose-400 shrink-0 animate-spin" style={{ animationDuration: '4s' }} />
+            <div className="min-w-0">
+              <div className="text-[10px] font-terminal font-bold text-rose-300 tracking-wider flex items-center gap-1.5 truncate">
+                <span>🚨 CATASTROPHIC HULL WARNING: {Math.round(hull)}%</span>
+                <span className="text-[9px] px-1.5 py-0.2 rounded bg-rose-800 text-rose-100 font-normal">DECOMPRESSION RISK</span>
+              </div>
+              <div className="text-[10px] text-rose-200/90 font-sans truncate">
+                Bulkheads compromised! Order Jax to initiate emergency nanite repairs!
+              </div>
+            </div>
+          </div>
+          <span className="text-[9px] font-terminal px-2 py-0.5 rounded bg-rose-900/90 border border-rose-400 text-white font-bold shrink-0 ml-2">
+            HULL &lt; 20%
+          </span>
+        </div>
+      )}
+
       {/* Scrolling Messages Area */}
       <div
         ref={scrollRef}
@@ -106,7 +173,13 @@ export const CommsFeed: React.FC<CommsFeedProps> = ({
           </div>
         ) : (
           messages.map((msg) => {
-            const style = getSpeakerStyle(msg.speaker);
+            const isCritical =
+              msg.sentiment === 'critical' ||
+              msg.isUrgent ||
+              msg.priority === 'critical' ||
+              (msg.text.includes('RED ALERT') && msg.text.includes('HULL'));
+
+            const style = getSpeakerStyle(msg.speaker, isCritical);
             const isCaptain = msg.speaker === 'Captain';
 
             return (
@@ -118,19 +191,31 @@ export const CommsFeed: React.FC<CommsFeedProps> = ({
               >
                 <div className="flex items-center justify-between mb-1">
                   <div className="flex items-center gap-1.5">
-                    <span className={`px-1.5 py-0.5 rounded border text-[10px] font-terminal font-semibold flex items-center gap-1 ${style.badge}`}>
+                    <span
+                      className={`px-1.5 py-0.5 rounded border text-[10px] font-terminal font-semibold flex items-center gap-1 ${style.badge}`}
+                    >
                       {style.icon}
                       {msg.speaker.toUpperCase()}
                     </span>
                     <span className="text-[10px] text-slate-500 font-terminal hidden sm:inline">
                       [{style.role}]
                     </span>
+                    {isCritical && (
+                      <span className="px-1.5 py-0.5 rounded bg-rose-900/90 border border-rose-400/80 text-rose-100 text-[9px] font-terminal font-bold animate-pulse flex items-center gap-1">
+                        <AlertTriangle className="w-2.5 h-2.5 text-rose-300" />
+                        CRITICAL
+                      </span>
+                    )}
                   </div>
-                  <span className="text-[10px] text-slate-500 font-terminal">
+                  <span className={`text-[10px] font-terminal ${isCritical ? 'text-rose-400 font-semibold' : 'text-slate-500'}`}>
                     {msg.timestamp}
                   </span>
                 </div>
-                <p className="text-slate-200 leading-relaxed font-sans text-xs pl-0.5">
+                <p
+                  className={`leading-relaxed font-sans text-xs pl-0.5 ${
+                    isCritical ? 'text-rose-100 font-medium tracking-wide' : 'text-slate-200'
+                  }`}
+                >
                   {msg.text}
                 </p>
               </div>

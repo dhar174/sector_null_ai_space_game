@@ -8,7 +8,13 @@ import { SettingsModal } from './components/SettingsModal';
 import { GameOverModal } from './components/GameOverModal';
 import { SpaceRenderer } from './game/starfield';
 import { generateRandomEncounter } from './game/encounters';
-import { sendCrewCommand } from './game/crewAI';
+import {
+  sendCrewCommand,
+  triggerCriticalHullDialogue,
+  triggerHullStabilizedDialogue,
+  getCriticalHullHitResponse,
+  shouldTriggerCriticalHullAlert,
+} from './game/crewAI';
 import { sound } from './utils/audio';
 import { Rocket, Shield, Radio, Sparkles } from 'lucide-react';
 
@@ -61,6 +67,56 @@ export default function App() {
 
   const rendererRef = useRef<SpaceRenderer | null>(null);
   const nextEncounterDistRef = useRef<number>(12); // First encounter spawns at ~12 LY
+  const prevHullRef = useRef<number>(INITIAL_SHIP_STATE.hull);
+  const criticalAlertActiveRef = useRef<boolean>(false);
+
+  // Monitor critical hull condition (< 20%) to trigger urgent bridge dialogue, alarms, and comms alerts
+  useEffect(() => {
+    if (ship.isGameOver) return;
+
+    const prev = prevHullRef.current;
+    const curr = ship.hull;
+
+    // Detect transition when hull falls below 20%
+    if (shouldTriggerCriticalHullAlert(curr, prev)) {
+      criticalAlertActiveRef.current = true;
+      sound.playKlaxon();
+      rendererRef.current?.triggerShake(16);
+
+      // Spike crew stress when hull integrity breaks below 20%
+      setCrew((c) => ({
+        ...c,
+        jaxStress: Math.min(100, c.jaxStress + 28),
+        jaxStatus: 'Panicking',
+        elaraStress: Math.min(100, (c.elaraStress ?? 12) + 20),
+        elaraStatus: 'Alarmed',
+      }));
+
+      // Generate urgent bridge officer responses
+      const urgentDialogue = triggerCriticalHullDialogue(ship, crew, encounter);
+      urgentDialogue.forEach((alertMsg, idx) => {
+        setTimeout(() => {
+          sound.playTransmissionIn(alertMsg.speaker);
+          setMessages((prevMsgs) => [...prevMsgs, alertMsg]);
+        }, idx * 450);
+      });
+    } else if (prev < 20 && curr >= 20) {
+      // Hull recovered back above 20%
+      if (criticalAlertActiveRef.current) {
+        criticalAlertActiveRef.current = false;
+        sound.playScan();
+        const stabilizedDialogue = triggerHullStabilizedDialogue(ship, crew);
+        stabilizedDialogue.forEach((stabMsg, idx) => {
+          setTimeout(() => {
+            sound.playTransmissionIn(stabMsg.speaker);
+            setMessages((prevMsgs) => [...prevMsgs, stabMsg]);
+          }, idx * 400);
+        });
+      }
+    }
+
+    prevHullRef.current = curr;
+  }, [ship.hull, ship.isGameOver, crew, encounter]);
 
   // Sync sound engine enabled state
   useEffect(() => {
@@ -190,6 +246,13 @@ export default function App() {
           } else {
             setShip((s) => {
               const damaged = Math.max(0, s.hull - 7);
+              if (s.hull < 20 && damaged > 0) {
+                const hitMsg = getCriticalHullHitResponse(damaged, 7, prevEnc.title);
+                setTimeout(() => {
+                  sound.playTransmissionIn('Jax');
+                  setMessages((msgs) => [...msgs, hitMsg]);
+                }, 200);
+              }
               return {
                 ...s,
                 hull: damaged,
@@ -491,6 +554,7 @@ export default function App() {
             soundEnabled={settings.soundEnabled}
             onToggleSound={() => setSettings((s) => ({ ...s, soundEnabled: !s.soundEnabled }))}
             onClearMessages={() => setMessages([])}
+            hull={ship.hull}
           />
         </div>
 
@@ -500,6 +564,7 @@ export default function App() {
             onSendCommand={handleSendCommand}
             isLoading={isLoading}
             onOpenSettings={() => setIsSettingsOpen(true)}
+            isHullCritical={ship.hull < 20 && ship.hull > 0}
           />
         </div>
       </main>
