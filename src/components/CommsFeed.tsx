@@ -200,7 +200,7 @@ export const CommsFeed: React.FC<CommsFeedProps> = ({
             Bridge comms channel open. Issue captain orders below.
           </div>
         ) : (
-          messages.map((msg) => {
+          messages.map((msg, index) => {
             const isCritical =
               msg.sentiment === 'critical' ||
               msg.isUrgent ||
@@ -209,20 +209,44 @@ export const CommsFeed: React.FC<CommsFeedProps> = ({
 
             const style = getSpeakerStyle(msg.speaker, isCritical);
             const isCaptain = msg.speaker === 'Captain';
-
             const isJax = msg.speaker === 'Jax';
             const isElara = msg.speaker === 'Elara';
+            const isLatest = index === messages.length - 1;
+
+            const entranceClass = isCritical
+              ? 'animate-comms-entry-critical'
+              : isCaptain
+              ? 'animate-comms-entry-captain'
+              : 'animate-comms-entry';
 
             return (
               <div
                 key={msg.id}
-                className={`p-2.5 rounded-lg border text-xs transition-all flex items-start gap-2.5 ${style.bubble} ${
-                  isCaptain ? 'ml-4 bg-sky-950/20 border-sky-800/40' : 'mr-2'
+                className={`relative p-2.5 rounded-lg border text-xs transition-all flex items-start gap-2.5 overflow-hidden ${entranceClass} ${style.bubble} ${
+                  isCaptain ? 'ml-4 bg-sky-950/20 border-sky-800/40 shadow-sm shadow-sky-950/40' : 'mr-2'
                 }`}
               >
+                {/* Subtle speaker frequency edge accent bar */}
+                <div
+                  className={`absolute left-0 top-0 bottom-0 w-0.5 ${
+                    isCritical
+                      ? 'bg-rose-500 shadow-[0_0_8px_#f43f5e]'
+                      : isJax
+                      ? 'bg-amber-500/80 shadow-[0_0_6px_rgba(245,158,11,0.5)]'
+                      : isElara
+                      ? 'bg-cyan-400/80 shadow-[0_0_6px_rgba(6,182,212,0.5)]'
+                      : isCaptain
+                      ? 'bg-sky-400/80 shadow-[0_0_6px_rgba(56,189,248,0.5)]'
+                      : 'bg-slate-600/60'
+                  }`}
+                />
+
+                {/* Subtle initial reception scanline sweep */}
+                <div className="absolute inset-0 pointer-events-none opacity-25 bg-gradient-to-b from-transparent via-white/10 to-transparent -translate-y-full animate-[commsIncomingScanline_0.6s_ease-out_forwards]" />
+
                 {/* Officer Expressive 2D Portrait Avatar if Jax or Elara */}
                 {isJax && crew && (
-                  <div className="shrink-0 pt-0.5">
+                  <div className="shrink-0 pt-0.5 relative z-10">
                     <JaxPortrait
                       stress={crew.jaxStress}
                       status={crew.jaxStatus}
@@ -232,7 +256,7 @@ export const CommsFeed: React.FC<CommsFeedProps> = ({
                   </div>
                 )}
                 {isElara && crew && (
-                  <div className="shrink-0 pt-0.5">
+                  <div className="shrink-0 pt-0.5 relative z-10">
                     <ElaraPortrait
                       stress={crew.elaraStress ?? 12}
                       curiosity={crew.elaraCuriosity}
@@ -243,7 +267,7 @@ export const CommsFeed: React.FC<CommsFeedProps> = ({
                   </div>
                 )}
 
-                <div className="flex-1 min-w-0">
+                <div className="flex-1 min-w-0 relative z-10">
                   <div className="flex items-center justify-between mb-1">
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <span
@@ -269,6 +293,12 @@ export const CommsFeed: React.FC<CommsFeedProps> = ({
                         <span className="px-1.5 py-0.5 rounded bg-rose-900/90 border border-rose-400/80 text-rose-100 text-[9px] font-terminal font-bold animate-pulse flex items-center gap-1">
                           <AlertTriangle className="w-2.5 h-2.5 text-rose-300" />
                           CRITICAL
+                        </span>
+                      )}
+                      {isLatest && (
+                        <span className="inline-flex items-center gap-1 text-[9px] font-terminal text-emerald-300 bg-emerald-950/80 border border-emerald-500/40 px-1 py-0.2 rounded shadow-[0_0_6px_rgba(16,185,129,0.3)] animate-pulse">
+                          <Radio className="w-2.5 h-2.5 text-emerald-400" />
+                          <span>NEW</span>
                         </span>
                       )}
                     </div>

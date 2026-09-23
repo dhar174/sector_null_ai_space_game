@@ -512,10 +512,8 @@ export default function App() {
               case 'change_hull':
                 updatedHull = Math.max(0, Math.min(100, updatedHull + action.value));
                 if (action.value > 0) {
-                  rendererRef.current?.addRepairSparks(
-                    (rendererRef.current as any).canvas?.width / 2 || 400,
-                    (rendererRef.current as any).canvas?.height * 0.72 || 350
-                  );
+                  rendererRef.current?.triggerHullRepairSequence(action.value);
+                  sound.playRepairSequence();
                 }
                 break;
               case 'change_shields':

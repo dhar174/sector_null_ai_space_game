@@ -298,6 +298,68 @@ class SoundEngine {
     }
   }
 
+  // Visual nanite hull repair sequence audio with restoration pulse harmonics & micro-welding sizzle
+  public playRepairSequence() {
+    if (!this.enabled) return;
+    this.initCtx();
+    if (!this.ctx) return;
+
+    try {
+      const now = this.ctx.currentTime;
+
+      // 1. Initial rising harmonic restoration pulse wave (320Hz -> 680Hz)
+      const pulseOsc = this.ctx.createOscillator();
+      const pulseGain = this.ctx.createGain();
+      pulseOsc.type = 'sine';
+      pulseOsc.frequency.setValueAtTime(320, now);
+      pulseOsc.frequency.exponentialRampToValueAtTime(740, now + 0.45);
+
+      pulseGain.gain.setValueAtTime(0.12, now);
+      pulseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
+
+      pulseOsc.connect(pulseGain);
+      pulseGain.connect(this.ctx.destination);
+      pulseOsc.start(now);
+      pulseOsc.stop(now + 0.62);
+
+      // 2. Nanite welding micro-arcs (rapid staccato high-frequency discharge)
+      for (let i = 0; i < 4; i++) {
+        const t = now + 0.12 + i * 0.08;
+        const sparkOsc = this.ctx.createOscillator();
+        const sparkGain = this.ctx.createGain();
+        sparkOsc.type = 'triangle';
+        sparkOsc.frequency.setValueAtTime(1400 + Math.random() * 400, t);
+        sparkOsc.frequency.exponentialRampToValueAtTime(800, t + 0.04);
+
+        sparkGain.gain.setValueAtTime(0.05, t);
+        sparkGain.gain.exponentialRampToValueAtTime(0.001, t + 0.045);
+
+        sparkOsc.connect(sparkGain);
+        sparkGain.connect(this.ctx.destination);
+        sparkOsc.start(t);
+        sparkOsc.stop(t + 0.05);
+      }
+
+      // 3. Resonant crystalline hull integrity restored chime (two-tone confirmation)
+      const chimeOsc = this.ctx.createOscillator();
+      const chimeGain = this.ctx.createGain();
+      chimeOsc.type = 'sine';
+      chimeOsc.frequency.setValueAtTime(880, now + 0.42);
+      chimeOsc.frequency.setValueAtTime(1320, now + 0.54);
+
+      chimeGain.gain.setValueAtTime(0.001, now);
+      chimeGain.gain.setValueAtTime(0.09, now + 0.42);
+      chimeGain.gain.exponentialRampToValueAtTime(0.001, now + 0.95);
+
+      chimeOsc.connect(chimeGain);
+      chimeGain.connect(this.ctx.destination);
+      chimeOsc.start(now + 0.42);
+      chimeOsc.stop(now + 0.98);
+    } catch {
+      // Audio playback failsafe
+    }
+  }
+
   // Emergency klaxon alert
   public playKlaxon() {
     if (!this.enabled) return;

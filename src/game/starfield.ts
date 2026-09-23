@@ -24,6 +24,27 @@ interface Star {
   layer: number; // 0: distant, 1: mid, 2: foreground
 }
 
+export interface RepairDrone {
+  id: number;
+  relX: number;
+  relY: number;
+  targetAnchorX: number;
+  targetAnchorY: number;
+  targetLabel: string;
+  vx: number;
+  vy: number;
+  angle: number;
+  phase: number;
+  hoverSpeed: number;
+  welding: boolean;
+  weldingTimer: number;
+  laserFlicker: number;
+  beamColor: string;
+  sparkEmitTimer: number;
+  droneSize: number;
+  state: 'deploying' | 'welding' | 'peel_away';
+}
+
 export interface SectorVisualProfile {
   name: string;
   themeTitle: string;
@@ -223,6 +244,22 @@ export class SpaceRenderer {
   private engineGlowPhase: number = 0;
   private shieldHitTimer: number = 0;
   private shieldRippleAngle: number = 0;
+
+  // Nanite Repair Drone & Visual Hull Repair Sequence
+  private isRepairSequenceActive: boolean = false;
+  private repairSequenceProgress: number = 0; // 0 to 1
+  private repairSequenceDuration: number = 4.2; // seconds
+  private repairSequenceElapsed: number = 0;
+  private repairDrones: RepairDrone[] = [];
+  private repairHullDelta: number = 20;
+  private onRepairCompleteCallback?: () => void;
+
+  // Temporary shield-like pulse to signify integrity restoration
+  private integrityPulseActive: boolean = false;
+  private integrityPulseRadius: number = 0;
+  private integrityPulseMaxRadius: number = 110;
+  private integrityPulseAlpha: number = 0;
+  private integrityPulseRipples: Array<{ radius: number; alpha: number; maxRadius: number; speed: number }> = [];
 
   // Celestial background feature (drifting gas giant / moon)
   private planet: CelestialPlanet | null = null;
@@ -470,6 +507,129 @@ export class SpaceRenderer {
         alpha: 1,
         life: 0,
         maxLife: Math.random() * 45 + 20,
+        glow: true,
+      });
+    }
+  }
+
+  public triggerHullRepairSequence(deltaHull: number = 20, onComplete?: () => void) {
+    this.isRepairSequenceActive = true;
+    this.repairSequenceProgress = 0;
+    this.repairSequenceElapsed = 0;
+    this.repairHullDelta = deltaHull;
+    this.onRepairCompleteCallback = onComplete;
+
+    // 1. Temporary shield-like pulse to signify integrity restoration
+    this.integrityPulseActive = true;
+    this.integrityPulseRadius = 16;
+    this.integrityPulseAlpha = 1.0;
+    this.integrityPulseRipples = [
+      { radius: 12, alpha: 0.9, maxRadius: 95, speed: 70 },
+      { radius: 6, alpha: 0.8, maxRadius: 80, speed: 55 },
+      { radius: 2, alpha: 0.7, maxRadius: 65, speed: 45 },
+    ];
+
+    // 2. Initialize autonomous Nanite Repair Drones targeted at damaged plating
+    const droneConfigs = [
+      { targetAnchorX: -26, targetAnchorY: 6, label: 'PORT WING ARMOR', beamColor: '#38bdf8' },
+      { targetAnchorX: 26, targetAnchorY: 6, label: 'STARBOARD PLATING', beamColor: '#2dd4bf' },
+      { targetAnchorX: 0, targetAnchorY: -24, label: 'FORWARD NOSECONE', beamColor: '#34d399' },
+      { targetAnchorX: -14, targetAnchorY: 16, label: 'PORT NACELLE SEAM', beamColor: '#38bdf8' },
+      { targetAnchorX: 14, targetAnchorY: 16, label: 'STARBOARD NACELLE SEAM', beamColor: '#2dd4bf' },
+    ];
+
+    const dronesToSpawn = deltaHull >= 15 ? 5 : 4;
+    this.repairDrones = [];
+
+    for (let i = 0; i < dronesToSpawn; i++) {
+      const cfg = droneConfigs[i];
+      const spawnSide = i % 2 === 0 ? -1 : 1;
+      const startX = spawnSide * (75 + Math.random() * 35);
+      const startY = 35 + Math.random() * 45;
+
+      this.repairDrones.push({
+        id: i + 1,
+        relX: startX,
+        relY: startY,
+        targetAnchorX: cfg.targetAnchorX,
+        targetAnchorY: cfg.targetAnchorY,
+        targetLabel: cfg.label,
+        vx: 0,
+        vy: 0,
+        angle: Math.atan2(cfg.targetAnchorY - startY, cfg.targetAnchorX - startX),
+        phase: Math.random() * Math.PI * 2,
+        hoverSpeed: 3.5 + Math.random() * 2,
+        welding: false,
+        weldingTimer: 0,
+        laserFlicker: 1,
+        beamColor: cfg.beamColor,
+        sparkEmitTimer: 0,
+        droneSize: 5.5,
+        state: 'deploying',
+      });
+    }
+
+    // Add initial burst of nanite particles around ship perimeter
+    this.addRepairSparks(this.shipVisualX, this.shipVisualY);
+  }
+
+  public isRepairActive(): boolean {
+    return this.isRepairSequenceActive;
+  }
+
+  public getRepairStatus(): {
+    active: boolean;
+    progress: number;
+    hullDelta: number;
+    dronesCount: number;
+    activeWeldingCount: number;
+    drones: Array<{ id: number; label: string; welding: boolean }>;
+  } {
+    return {
+      active: this.isRepairSequenceActive,
+      progress: this.repairSequenceProgress,
+      hullDelta: this.repairHullDelta,
+      dronesCount: this.repairDrones.length,
+      activeWeldingCount: this.repairDrones.filter((d) => d.welding).length,
+      drones: this.repairDrones.map((d) => ({
+        id: d.id,
+        label: d.targetLabel,
+        welding: d.welding,
+      })),
+    };
+  }
+
+  public addNaniteWeldingSparks(x: number, y: number, color: string = '#38bdf8', count: number = 3) {
+    for (let i = 0; i < count; i++) {
+      const angle = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI * 1.3; // Sparks leap outwards & up
+      const speed = Math.random() * 4 + 1.2;
+      const isCore = Math.random() < 0.4;
+      this.particles.push({
+        x: x + (Math.random() - 0.5) * 3,
+        y: y + (Math.random() - 0.5) * 3,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        size: Math.random() * 2.2 + 0.8,
+        color: isCore ? '#ffffff' : color,
+        alpha: 1,
+        life: 0,
+        maxLife: Math.random() * 22 + 10,
+        glow: true,
+      });
+    }
+
+    // Occasional nanite matrix cross/diamond particle
+    if (Math.random() < 0.25) {
+      this.particles.push({
+        x: x + (Math.random() - 0.5) * 8,
+        y: y + (Math.random() - 0.5) * 6,
+        vx: (Math.random() - 0.5) * 0.8,
+        vy: -Math.random() * 1.2 - 0.4,
+        size: Math.random() * 2.5 + 1.5,
+        color: '#10b981',
+        alpha: 0.9,
+        life: 0,
+        maxLife: 28,
         glow: true,
       });
     }
@@ -1020,6 +1180,9 @@ export class SpaceRenderer {
     if (this.shieldHitTimer > 0) {
       this.shieldHitTimer = Math.max(0, this.shieldHitTimer - dt * 2.2);
     }
+
+    // Update Nanite Repair Sequence, Drone Positions, and Integrity Pulse
+    this.updateRepairSequence(dt, ship, now);
 
     const w = this.canvas.width;
     const h = this.canvas.height;
@@ -1904,14 +2067,23 @@ export class SpaceRenderer {
       this.renderShieldBubble(ctx, ship, now);
     }
 
+    // 2b. Temporary Integrity Restoration Shield-like Pulse & Restorative Aura
+    this.renderIntegrityRestorationPulse(ctx, now);
+
     // 3. Thruster Exhaust Plumes (Dual Heavy Plasma Nacelles)
     this.renderThrusterPlumes(ctx, ship, now);
 
     // 4. Ship Main Airframe & Wings (NSV Vanguard-9)
     this.renderShipChassis(ctx, ship, now);
 
+    // 4b. Nanite Armor Plating Healing Seams (glowing welding fissures sealing)
+    this.renderNanitePlatingSeams(ctx, now);
+
     // 5. Damage Visual Effects (Smoke, electrical short arcs, hull scorch)
     this.renderShipDamageEffects(ctx, ship, now);
+
+    // 6. Nanite Repair Drones (orbiting, hovering, firing welding lasers & spraying sparks)
+    this.renderRepairDrones(ctx, now);
 
     ctx.restore();
   }
@@ -2525,6 +2697,337 @@ export class SpaceRenderer {
     } else {
       ctx.fillStyle = '#64748b';
       ctx.fillText(`SECTOR: ${ship.sector.toUpperCase()} // SCAN: NOMINAL`, 16, 52);
+    }
+
+    ctx.restore();
+  }
+
+  /**
+   * Updates drone physics, welding lasers, spark emissions, and integrity pulse expansion
+   */
+  private updateRepairSequence(dt: number, ship: ShipState, now: number) {
+    if (!this.isRepairSequenceActive) return;
+
+    this.repairSequenceElapsed += dt;
+    this.repairSequenceProgress = Math.min(1.0, this.repairSequenceElapsed / this.repairSequenceDuration);
+
+    // 1. Update expanding integrity restoration pulse wave
+    if (this.integrityPulseActive) {
+      this.integrityPulseRadius += 85 * dt;
+      this.integrityPulseAlpha = Math.max(0, 1 - (this.integrityPulseRadius / this.integrityPulseMaxRadius));
+      if (this.integrityPulseRadius >= this.integrityPulseMaxRadius) {
+        this.integrityPulseActive = false;
+      }
+    }
+
+    // 2. Update secondary harmonic ripples
+    for (const rip of this.integrityPulseRipples) {
+      rip.radius += rip.speed * dt;
+      rip.alpha = Math.max(0, rip.alpha - dt * 0.45);
+    }
+
+    // 3. Update Nanite Repair Drones kinematics and welding state
+    const progress = this.repairSequenceProgress;
+
+    for (const drone of this.repairDrones) {
+      drone.phase += dt * drone.hoverSpeed;
+
+      if (progress < 0.18) {
+        // Phase A: Rapid deployment fly-in from perimeter toward targeted damaged plating
+        drone.state = 'deploying';
+        drone.welding = false;
+
+        const hoverOffsetX = Math.cos(drone.phase) * 6;
+        const hoverOffsetY = -15 + Math.sin(drone.phase) * 5;
+        const desiredX = drone.targetAnchorX + hoverOffsetX;
+        const desiredY = drone.targetAnchorY + hoverOffsetY;
+
+        const dx = desiredX - drone.relX;
+        const dy = desiredY - drone.relY;
+
+        drone.relX += dx * Math.min(1, dt * 7.5);
+        drone.relY += dy * Math.min(1, dt * 7.5);
+        drone.angle = Math.atan2(drone.targetAnchorY - drone.relY, drone.targetAnchorX - drone.relX);
+      } else if (progress < 0.85) {
+        // Phase B: Precision hover & active nanite welding laser discharge
+        drone.state = 'welding';
+        drone.welding = true;
+
+        const hoverOffsetX = Math.cos(drone.phase) * 3.5;
+        const hoverOffsetY = -13 + Math.sin(drone.phase * 1.4) * 2.8;
+        const desiredX = drone.targetAnchorX + hoverOffsetX;
+        const desiredY = drone.targetAnchorY + hoverOffsetY;
+
+        drone.relX += (desiredX - drone.relX) * (dt * 8);
+        drone.relY += (desiredY - drone.relY) * (dt * 8);
+        drone.angle = Math.atan2(drone.targetAnchorY - drone.relY, drone.targetAnchorX - drone.relX);
+
+        // High frequency laser flickering
+        drone.laserFlicker = 0.75 + Math.random() * 0.5;
+
+        // Continuous spray of welding sparks & nanite matrix particles
+        drone.sparkEmitTimer += dt;
+        if (drone.sparkEmitTimer >= 0.045) {
+          drone.sparkEmitTimer = 0;
+          this.addNaniteWeldingSparks(
+            this.shipVisualX + drone.targetAnchorX,
+            this.shipVisualY + drone.targetAnchorY,
+            drone.beamColor,
+            3
+          );
+        }
+      } else {
+        // Phase C: Peel away & return to ventral nanite bay
+        drone.state = 'peel_away';
+        drone.welding = false;
+
+        const peelAngle = Math.atan2(drone.relY, drone.relX);
+        drone.relX += Math.cos(peelAngle) * 110 * dt;
+        drone.relY += Math.sin(peelAngle) * 95 * dt;
+        drone.angle = peelAngle;
+      }
+    }
+
+    // Completion cleanup
+    if (progress >= 1.0) {
+      this.isRepairSequenceActive = false;
+      this.repairDrones = [];
+      if (this.onRepairCompleteCallback) {
+        this.onRepairCompleteCallback();
+        this.onRepairCompleteCallback = undefined;
+      }
+    }
+  }
+
+  /**
+   * Renders the temporary shield-like pulse to signify integrity restoration
+   */
+  private renderIntegrityRestorationPulse(ctx: CanvasRenderingContext2D, now: number) {
+    if (!this.integrityPulseActive && !this.isRepairSequenceActive) return;
+
+    ctx.save();
+
+    // 1. Ambient restorative energy aura around ship hull
+    if (this.isRepairSequenceActive) {
+      const auraPulse = (Math.sin(now * 0.008) + 1) * 0.5; // 0 to 1 breathing
+      const auraAlpha = 0.16 + auraPulse * 0.22;
+      const auraGrad = ctx.createRadialGradient(0, 0, 15, 0, 0, 72);
+      auraGrad.addColorStop(0, `rgba(16, 185, 129, ${auraAlpha * 0.85})`);
+      auraGrad.addColorStop(0.5, `rgba(56, 189, 248, ${auraAlpha * 0.45})`);
+      auraGrad.addColorStop(1, 'rgba(16, 185, 129, 0)');
+      ctx.fillStyle = auraGrad;
+      ctx.beginPath();
+      ctx.arc(0, 0, 72, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // 2. Primary expanding hexagonal integrity restoration pulse wave
+    if (this.integrityPulseActive && this.integrityPulseAlpha > 0.02) {
+      const pulseRad = this.integrityPulseRadius;
+      const alpha = this.integrityPulseAlpha;
+
+      ctx.strokeStyle = `rgba(16, 185, 129, ${alpha})`;
+      ctx.lineWidth = 2.5;
+      ctx.shadowColor = '#10b981';
+      ctx.shadowBlur = 14;
+
+      // Draw expanding hexagonal wave
+      ctx.beginPath();
+      for (let s = 0; s < 6; s++) {
+        const angle = (s / 6) * Math.PI * 2 + (now * 0.0005);
+        const px = Math.cos(angle) * pulseRad;
+        const py = Math.sin(angle) * (pulseRad * 0.9); // slightly elliptical
+        if (s === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      ctx.stroke();
+
+      // Luminous vertex nodes on the 6 hex corners
+      ctx.fillStyle = `rgba(255, 255, 255, ${alpha * 1.2})`;
+      for (let s = 0; s < 6; s++) {
+        const angle = (s / 6) * Math.PI * 2 + (now * 0.0005);
+        const px = Math.cos(angle) * pulseRad;
+        const py = Math.sin(angle) * (pulseRad * 0.9);
+        ctx.beginPath();
+        ctx.arc(px, py, 3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Secondary concentric inner hex ring
+      ctx.strokeStyle = `rgba(56, 189, 248, ${alpha * 0.7})`;
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      for (let s = 0; s < 6; s++) {
+        const angle = (s / 6) * Math.PI * 2 - (now * 0.0005);
+        const px = Math.cos(angle) * (pulseRad * 0.7);
+        const py = Math.sin(angle) * (pulseRad * 0.63);
+        if (s === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      ctx.stroke();
+    }
+
+    // 3. Secondary expanding harmonic ripples
+    for (const rip of this.integrityPulseRipples) {
+      if (rip.alpha <= 0.02) continue;
+      ctx.strokeStyle = `rgba(45, 212, 191, ${rip.alpha * 0.8})`;
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.arc(0, 0, rip.radius, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+
+  /**
+   * Renders glowing nanite repair lines across the ship's wings and fuselage
+   */
+  private renderNanitePlatingSeams(ctx: CanvasRenderingContext2D, now: number) {
+    if (!this.isRepairSequenceActive) return;
+
+    ctx.save();
+    const progress = this.repairSequenceProgress;
+    const seamPulse = (Math.sin(now * 0.015) + 1) * 0.5;
+    const seamAlpha = Math.max(0.2, (1 - progress * 0.65) * (0.6 + seamPulse * 0.4));
+
+    ctx.strokeStyle = `rgba(16, 185, 129, ${seamAlpha})`;
+    ctx.lineWidth = 1.6;
+    ctx.shadowColor = '#10b981';
+    ctx.shadowBlur = 8;
+
+    // Port wing plating seam
+    ctx.beginPath();
+    ctx.moveTo(-10, -6);
+    ctx.lineTo(-24, 4);
+    ctx.lineTo(-32, 14);
+    ctx.stroke();
+
+    // Starboard wing plating seam
+    ctx.beginPath();
+    ctx.moveTo(10, -6);
+    ctx.lineTo(24, 4);
+    ctx.lineTo(32, 14);
+    ctx.stroke();
+
+    // Nosecone structural keel seam
+    ctx.beginPath();
+    ctx.moveTo(0, -32);
+    ctx.lineTo(0, -12);
+    ctx.stroke();
+
+    // Aft engine bay weld rings
+    ctx.beginPath();
+    ctx.arc(-14, 18, 5, 0, Math.PI * 2);
+    ctx.arc(14, 18, 5, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
+  /**
+   * Renders nanite repair drones, thrusters, chassis, and active welding laser beams
+   */
+  private renderRepairDrones(ctx: CanvasRenderingContext2D, now: number) {
+    if (!this.isRepairSequenceActive || this.repairDrones.length === 0) return;
+
+    ctx.save();
+
+    for (const drone of this.repairDrones) {
+      // 1. If welding, draw high-energy nanite laser beam and plating arc
+      if (drone.welding) {
+        ctx.save();
+        // Laser outer glow envelope
+        ctx.strokeStyle = drone.beamColor;
+        ctx.lineWidth = 2.6 * drone.laserFlicker;
+        ctx.shadowColor = drone.beamColor;
+        ctx.shadowBlur = 10;
+        ctx.beginPath();
+        ctx.moveTo(drone.relX, drone.relY);
+
+        // Subtle laser jitter / energetic arc
+        const midX = (drone.relX + drone.targetAnchorX) / 2 + Math.sin(now * 0.04 + drone.id) * 1.5;
+        const midY = (drone.relY + drone.targetAnchorY) / 2 + Math.cos(now * 0.04 + drone.id) * 1.5;
+        ctx.lineTo(midX, midY);
+        ctx.lineTo(drone.targetAnchorX, drone.targetAnchorY);
+        ctx.stroke();
+
+        // Laser bright white core
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1;
+        ctx.shadowBlur = 0;
+        ctx.beginPath();
+        ctx.moveTo(drone.relX, drone.relY);
+        ctx.lineTo(drone.targetAnchorX, drone.targetAnchorY);
+        ctx.stroke();
+
+        // Contact welding arc flare on hull plating
+        const flareRadius = 3.5 + Math.random() * 2.5;
+        const flareGrad = ctx.createRadialGradient(
+          drone.targetAnchorX,
+          drone.targetAnchorY,
+          1,
+          drone.targetAnchorX,
+          drone.targetAnchorY,
+          flareRadius * 2.5
+        );
+        flareGrad.addColorStop(0, '#ffffff');
+        flareGrad.addColorStop(0.35, drone.beamColor);
+        flareGrad.addColorStop(1, 'rgba(56, 189, 248, 0)');
+        ctx.fillStyle = flareGrad;
+        ctx.beginPath();
+        ctx.arc(drone.targetAnchorX, drone.targetAnchorY, flareRadius * 2.5, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.restore();
+      }
+
+      // 2. Drone Cybernetic Airframe
+      ctx.save();
+      ctx.translate(drone.relX, drone.relY);
+      ctx.rotate(drone.angle + Math.PI / 2); // Orient forward toward target
+
+      // Micro-thruster exhaust trails behind drone
+      ctx.fillStyle = 'rgba(56, 189, 248, 0.85)';
+      ctx.beginPath();
+      ctx.moveTo(-2.5, 6);
+      ctx.lineTo(-1, 9 + Math.random() * 3);
+      ctx.lineTo(0, 6);
+      ctx.lineTo(1, 9 + Math.random() * 3);
+      ctx.lineTo(2.5, 6);
+      ctx.closePath();
+      ctx.fill();
+
+      // Drone Chassis: sleek aerospace composite triangular delta
+      ctx.fillStyle = '#0f172a';
+      ctx.strokeStyle = '#475569';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(0, -6);
+      ctx.lineTo(5, 5);
+      ctx.lineTo(2, 4);
+      ctx.lineTo(-2, 4);
+      ctx.lineTo(-5, 5);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      // Cybernetic optic sensor eye (glowing green/cyan)
+      ctx.fillStyle = drone.welding ? '#34d399' : '#38bdf8';
+      ctx.shadowColor = drone.welding ? '#34d399' : '#38bdf8';
+      ctx.shadowBlur = 6;
+      ctx.beginPath();
+      ctx.arc(0, -1, 1.8, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Wingtip navigation micro-dots
+      ctx.fillStyle = '#22d3ee';
+      ctx.fillRect(-4.5, 3, 1.2, 1.2);
+      ctx.fillRect(3.5, 3, 1.2, 1.2);
+
+      ctx.restore();
     }
 
     ctx.restore();

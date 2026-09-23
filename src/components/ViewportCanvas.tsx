@@ -28,6 +28,7 @@ import {
   Shield,
   X,
   Zap,
+  Wrench,
 } from 'lucide-react';
 import { CrewStatus } from '../types';
 import { ShipSchematics } from './ShipSchematics';
@@ -111,6 +112,29 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
     bearingDeg: number;
     color: string;
   } | null>(null);
+
+  // Visual Nanite Hull Repair Sequence & Overlay State
+  const [repairStatus, setRepairStatus] = useState<{
+    active: boolean;
+    progress: number;
+    hullDelta: number;
+    dronesCount: number;
+    activeWeldingCount: number;
+    drones: Array<{ id: number; label: string; welding: boolean }>;
+  } | null>(null);
+
+  // Monitor ship.hull increases to automatically trigger the visual repair sequence
+  const prevHullRef = useRef<number>(ship.hull);
+  useEffect(() => {
+    if (ship.hull > prevHullRef.current) {
+      const delta = Math.round(ship.hull - prevHullRef.current);
+      if (rendererRef.current && !rendererRef.current.isRepairActive()) {
+        rendererRef.current.triggerHullRepairSequence(delta);
+      }
+      sound.playRepairSequence();
+    }
+    prevHullRef.current = ship.hull;
+  }, [ship.hull, rendererRef]);
 
   const prevEncounterIdRef = useRef<string | null>(null);
   const sensorPingTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -238,6 +262,9 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
         const targets = renderer.getTacticalTargets(currentShip, currentEncounter, now);
         setTacticalTargets(targets);
         setShipScreenPos(renderer.getShipScreenPosition());
+
+        const rep = renderer.getRepairStatus();
+        setRepairStatus(rep.active ? rep : null);
       }
 
       animId = requestAnimationFrame(loop);
@@ -395,7 +422,11 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
       ref={containerRef}
       onPointerMove={handlePointerMove}
       onPointerLeave={handlePointerLeave}
-      className="relative w-full h-full min-h-[320px] bg-[#04060d] border border-cyan-900/40 rounded-xl overflow-hidden shadow-2xl flex flex-col justify-between cursor-crosshair select-none"
+      className={`relative w-full h-full min-h-[320px] bg-[#04060d] rounded-xl overflow-hidden shadow-2xl flex flex-col justify-between cursor-crosshair select-none transition-all duration-300 ${
+        repairStatus?.active
+          ? 'border border-emerald-500/60 shadow-[inset_0_0_50px_rgba(16,185,129,0.22),0_0_35px_rgba(16,185,129,0.2)]'
+          : 'border border-cyan-900/40'
+      }`}
     >
       {/* 60fps High-Resolution Canvas Stage */}
       <canvas ref={canvasRef} className="absolute inset-0 w-full h-full block" />
@@ -914,6 +945,70 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
         </div>
       )}
 
+      {/* ========================================================================= */}
+      {/* VISUAL 'REPAIR' EFFECT OVERLAY ON MAIN SHIP VIEW                          */}
+      {/* ========================================================================= */}
+      {repairStatus?.active && (
+        <div className="absolute top-14 left-1/2 -translate-x-1/2 z-30 pointer-events-auto flex flex-col items-center animate-in fade-in zoom-in-95 duration-200">
+          <div className="bg-slate-950/95 backdrop-blur-md border border-emerald-500/60 shadow-[0_0_35px_rgba(16,185,129,0.35)] rounded-xl px-4 py-2.5 flex items-center gap-3.5 text-xs font-mono">
+            {/* Animated Nanite Pulse Icon */}
+            <div className="relative flex items-center justify-center w-8 h-8 rounded-lg bg-emerald-950/80 border border-emerald-500/60 text-emerald-400">
+              <Sparkles className="w-4 h-4 animate-spin-slow" />
+              <span className="absolute inset-0 rounded-lg animate-ping opacity-30 bg-emerald-400" />
+            </div>
+
+            <div className="flex flex-col">
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-bold tracking-widest text-emerald-300 uppercase">
+                  HULL RESTORATION ACTIVE // NANITES ENGAGED
+                </span>
+                <span className="text-[9px] px-1.5 py-0.2 rounded border border-emerald-500/50 bg-emerald-950/70 text-emerald-300 font-bold uppercase">
+                  +{repairStatus.hullDelta}% INTEGRITY
+                </span>
+              </div>
+
+              {/* Progress bar and status */}
+              <div className="flex items-center gap-2 mt-1">
+                <div className="w-36 sm:w-48 bg-slate-900 border border-emerald-900/60 h-2 rounded-full overflow-hidden p-0.5">
+                  <div
+                    style={{ width: `${Math.round(repairStatus.progress * 100)}%` }}
+                    className="h-full bg-gradient-to-r from-teal-400 via-emerald-400 to-cyan-300 rounded-full transition-all duration-75 shadow-[0_0_10px_#10b981]"
+                  />
+                </div>
+                <span className="text-[11px] font-bold text-emerald-200">
+                  {Math.round(repairStatus.progress * 100)}%
+                </span>
+                <span className="text-slate-500 text-[10px] hidden sm:inline">|</span>
+                <span className="text-[10px] text-cyan-300 hidden sm:inline">
+                  {repairStatus.dronesCount} DRONES WELDING
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Live Drone Subsystem Plating Tags */}
+          <div className="hidden sm:flex items-center gap-1.5 mt-1.5">
+            {repairStatus.drones.map((d) => (
+              <div
+                key={d.id}
+                className={`px-2 py-0.5 rounded text-[9px] font-mono tracking-tight border flex items-center gap-1 ${
+                  d.welding
+                    ? 'bg-emerald-950/80 border-emerald-500/60 text-emerald-300 shadow-[0_0_8px_rgba(16,185,129,0.3)]'
+                    : 'bg-slate-900/80 border-slate-700/60 text-slate-400'
+                }`}
+              >
+                <span
+                  className={`w-1.5 h-1.5 rounded-full ${
+                    d.welding ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'
+                  }`}
+                />
+                <span>D-{d.id}: {d.label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Top Aerospace Telemetry Ribbon */}
       <div className="relative z-10 p-2.5 sm:p-3 flex items-center justify-between text-xs font-terminal tracking-wider">
         <div className="flex items-center gap-2 bg-slate-950/85 backdrop-blur-md px-3 py-1.5 rounded-lg border border-cyan-500/30 text-cyan-400">
@@ -989,6 +1084,23 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
               >
                 <Target className="w-2.5 h-2.5 text-cyan-400" />
                 <span>CYCLE [TAB]</span>
+              </button>
+
+              <div className="h-3 w-px bg-slate-800 mx-0.5" />
+              <button
+                onClick={() => {
+                  if (onSendCommand) {
+                    onSendCommand('Chief Jax, execute emergency nanite hull repair on external plating');
+                  } else {
+                    rendererRef.current?.triggerHullRepairSequence(20);
+                    sound.playRepairSequence();
+                  }
+                }}
+                className="px-1.5 py-0.5 rounded bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-500/60 text-emerald-300 text-[9px] font-bold flex items-center gap-1 transition-colors shadow-[0_0_8px_rgba(16,185,129,0.25)]"
+                title="Deploy Nanite Repair Drones to patch external plating"
+              >
+                <Wrench className="w-2.5 h-2.5 text-emerald-400" />
+                <span>REPAIR PLATING</span>
               </button>
             </>
           )}

@@ -115,3 +115,87 @@
   animation: stressPulseUrgent 0.85s ease-in-out infinite;
 }
 
+/* Comms Feed Transmission Entrance Animations */
+@keyframes commsIncomingOfficer {
+  0% {
+    opacity: 0;
+    transform: translateY(8px) translateX(-5px) scale(0.985);
+    filter: brightness(1.25);
+  }
+  65% {
+    filter: brightness(1.08);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) translateX(0) scale(1);
+    filter: brightness(1);
+  }
+}
+
+@keyframes commsIncomingCaptain {
+  0% {
+    opacity: 0;
+    transform: translateY(8px) translateX(6px) scale(0.985);
+    filter: brightness(1.25);
+  }
+  65% {
+    filter: brightness(1.08);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) translateX(0) scale(1);
+    filter: brightness(1);
+  }
+}
+
+@keyframes commsIncomingCritical {
+  0% {
+    opacity: 0;
+    transform: translateY(10px) scale(0.975);
+    box-shadow: 0 0 24px rgba(244, 63, 94, 0.45), inset 0 0 12px rgba(244, 63, 94, 0.25);
+    filter: brightness(1.35);
+  }
+  50% {
+    box-shadow: 0 0 16px rgba(244, 63, 94, 0.35), inset 0 0 8px rgba(244, 63, 94, 0.15);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: brightness(1);
+  }
+}
+
+@keyframes commsIncomingScanline {
+  0% {
+    transform: translateY(-100%);
+    opacity: 0.6;
+  }
+  100% {
+    transform: translateY(200%);
+    opacity: 0;
+  }
+}
+
+.animate-comms-entry {
+  animation: commsIncomingOfficer 0.34s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.animate-comms-entry-captain {
+  animation: commsIncomingCaptain 0.34s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.animate-comms-entry-critical {
+  animation: commsIncomingCritical 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-comms-entry,
+  .animate-comms-entry-captain,
+  .animate-comms-entry-critical {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}
+
+
