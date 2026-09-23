@@ -8,7 +8,7 @@ import {
   TacticalTarget,
   ThreatLevel,
 } from '../types';
-import { SpaceRenderer } from '../game/starfield';
+import { SpaceRenderer, SECTOR_VISUAL_PROFILES } from '../game/starfield';
 import { sound } from '../utils/audio';
 import {
   Compass,
@@ -29,12 +29,18 @@ import {
   X,
   Zap,
 } from 'lucide-react';
+import { CrewStatus } from '../types';
+import { ShipSchematics } from './ShipSchematics';
 
 interface ViewportCanvasProps {
   ship: ShipState;
   encounter: Encounter | null;
   onRendererReady?: (renderer: SpaceRenderer) => void;
   rendererRef: React.MutableRefObject<SpaceRenderer | null>;
+  crew?: CrewStatus;
+  onSendCommand?: (command: string) => void;
+  isSchematicsOpen?: boolean;
+  onToggleSchematics?: () => void;
 }
 
 export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
@@ -42,9 +48,23 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
   encounter,
   onRendererReady,
   rendererRef,
+  crew,
+  onSendCommand,
+  isSchematicsOpen,
+  onToggleSchematics,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [localSchematicsOpen, setLocalSchematicsOpen] = useState<boolean>(false);
+
+  const effectiveSchematicsOpen = isSchematicsOpen !== undefined ? isSchematicsOpen : localSchematicsOpen;
+  const handleToggleSchematics = () => {
+    if (onToggleSchematics) {
+      onToggleSchematics();
+    } else {
+      setLocalSchematicsOpen((prev) => !prev);
+    }
+  };
 
   // Keep latest ship & encounter refs for the RAF loop
   const shipRef = useRef<ShipState>(ship);
@@ -80,6 +100,90 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
   const [scanProgress, setScanProgress] = useState<number>(0);
   const [scannedIds, setScannedIds] = useState<Record<string, boolean>>({});
   const [shipScreenPos, setShipScreenPos] = useState<{ x: number; y: number }>({ x: 400, y: 350 });
+
+  // Active Sensor Ping Radar Sweep State
+  const [activeSensorPing, setActiveSensorPing] = useState<{
+    id: string;
+    title: string;
+    type: string;
+    dangerLevel: string;
+    distance: number;
+    bearingDeg: number;
+    color: string;
+  } | null>(null);
+
+  const prevEncounterIdRef = useRef<string | null>(null);
+  const sensorPingTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Trigger active sensor ping radar sweep
+  const triggerSensorPingSweep = useCallback(
+    (targetEncounter: Encounter | null) => {
+      const isThreat =
+        targetEncounter?.dangerLevel === 'Hazardous' || targetEncounter?.dangerLevel === 'Extreme';
+      const pingColor = isThreat ? '#f43f5e' : '#06b6d4';
+
+      // Play active radar acoustic ping tone
+      sound.playRadarPing(isThreat);
+
+      // Bearing calculation: forward vector slightly offset by hazard signature
+      const bearing = targetEncounter
+        ? Math.round((Math.sin(targetEncounter.title.length * 3) * 28 + 360) % 360)
+        : 0;
+
+      // Trigger radar sweep on the canvas renderer
+      if (rendererRef.current) {
+        rendererRef.current.triggerRadarSweep(
+          undefined,
+          pingColor,
+          () => {
+            // Secondary contact acquisition confirmation chirp
+            sound.playCommsChirp(1350);
+          }
+        );
+        rendererRef.current.triggerScan();
+      }
+
+      if (targetEncounter) {
+        setActiveSensorPing({
+          id: targetEncounter.id,
+          title: targetEncounter.title,
+          type: targetEncounter.type,
+          dangerLevel: targetEncounter.dangerLevel,
+          distance: Math.round(targetEncounter.distanceRemaining),
+          bearingDeg: bearing,
+          color: pingColor,
+        });
+
+        if (sensorPingTimerRef.current) {
+          clearTimeout(sensorPingTimerRef.current);
+        }
+        sensorPingTimerRef.current = setTimeout(() => {
+          setActiveSensorPing(null);
+        }, 3400);
+      }
+    },
+    [rendererRef]
+  );
+
+  // Detect when a new encounter arrives to fire the active sensor radar ping animation
+  useEffect(() => {
+    if (encounter && encounter.active && encounter.id !== prevEncounterIdRef.current) {
+      prevEncounterIdRef.current = encounter.id;
+      triggerSensorPingSweep(encounter);
+    } else if (!encounter) {
+      prevEncounterIdRef.current = null;
+      setActiveSensorPing(null);
+    }
+  }, [encounter, triggerSensorPingSweep]);
+
+  // Cleanup sensor ping timer on unmount
+  useEffect(() => {
+    return () => {
+      if (sensorPingTimerRef.current) {
+        clearTimeout(sensorPingTimerRef.current);
+      }
+    };
+  }, []);
 
   // Sync state into renderer
   const updateDisplayProps = useCallback(
@@ -207,10 +311,7 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
 
   const handleTriggerScan = (e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
-    if (rendererRef.current) {
-      rendererRef.current.triggerScan();
-      sound.playScan();
-    }
+    triggerSensorPingSweep(encounterRef.current);
 
     // If a target is currently locked, also perform focused scan
     if (selectedTargetId) {
@@ -752,6 +853,64 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
               </span>
             </div>
           )}
+
+          {/* 5. Active Sensor Ping Radar Sweep Telemetry Banner */}
+          {activeSensorPing && (
+            <div
+              style={{
+                borderColor: activeSensorPing.color,
+                boxShadow: `0 0 24px ${activeSensorPing.color}35`,
+              }}
+              className="absolute top-12 left-1/2 -translate-x-1/2 px-4 py-2 bg-slate-950/95 backdrop-blur-md border rounded-xl text-xs font-mono shadow-2xl z-35 flex items-center gap-3 animate-in fade-in slide-in-from-top-3 duration-200 pointer-events-auto"
+            >
+              <div
+                style={{ borderColor: activeSensorPing.color }}
+                className="relative w-8 h-8 rounded-lg bg-black/70 border flex items-center justify-center shrink-0"
+              >
+                <Radio
+                  style={{ color: activeSensorPing.color }}
+                  className="w-4 h-4 animate-spin-slow"
+                />
+                <span
+                  style={{ backgroundColor: activeSensorPing.color }}
+                  className="absolute inset-0 rounded-lg animate-ping opacity-35"
+                />
+              </div>
+
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-bold tracking-widest text-cyan-300 uppercase">
+                    ACTIVE SENSOR PING // RADAR SWEEP
+                  </span>
+                  <span
+                    style={{ borderColor: activeSensorPing.color, color: activeSensorPing.color }}
+                    className="text-[9px] px-1.5 py-0.2 rounded border bg-black/60 font-bold uppercase"
+                  >
+                    {activeSensorPing.dangerLevel} THREAT
+                  </span>
+                </div>
+                <div className="text-xs font-bold text-slate-100 flex items-center gap-2 mt-0.5">
+                  <span className="text-cyan-100 font-display tracking-wide">
+                    {activeSensorPing.title.toUpperCase()}
+                  </span>
+                  <span className="text-slate-500 text-[10px]">|</span>
+                  <span className="text-[10px] text-cyan-300">
+                    {activeSensorPing.distance} KM · BRG{' '}
+                    {String(activeSensorPing.bearingDeg).padStart(3, '0')}°
+                  </span>
+                </div>
+              </div>
+
+              {/* Sweeping animated radar telemetry indicator */}
+              <div className="hidden sm:flex flex-col items-end pl-2 border-l border-slate-800 text-[9px] text-cyan-400/80">
+                <span className="font-bold flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  SENSOR ACQUIRED
+                </span>
+                <span className="text-slate-500 font-mono">SWEEP COMPLETE</span>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -761,7 +920,17 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
           <Compass className="w-3.5 h-3.5 animate-spin-slow text-cyan-400" />
           <span className="font-semibold text-[11px]">{ship.sector.toUpperCase()}</span>
           <span className="text-slate-500 hidden sm:inline">·</span>
-          <span className="text-slate-400 text-[10px] hidden sm:inline">GRID 42-ALPHA</span>
+          <span className="text-slate-400 text-[10px] hidden sm:inline">
+            {SECTOR_VISUAL_PROFILES[Math.max(1, Math.min(4, ship.sectorLevel || 1))]?.themeTitle || 'DEEP VOID'}
+          </span>
+          <span
+            className="w-2 h-2 rounded-full inline-block ml-0.5"
+            style={{
+              backgroundColor:
+                SECTOR_VISUAL_PROFILES[Math.max(1, Math.min(4, ship.sectorLevel || 1))]?.dustColor || '#38bdf8',
+            }}
+            title={`Sector Level ${ship.sectorLevel}: ${SECTOR_VISUAL_PROFILES[Math.max(1, Math.min(4, ship.sectorLevel || 1))]?.starDensity} Star Density`}
+          />
         </div>
 
         {/* Center Tactical HUD Filter & Targeting Mode Bar */}
@@ -1035,6 +1204,20 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
 
           {/* Quick HUD Controls */}
           <div className="flex items-center gap-2">
+            {/* 2D Ship Schematics Wireframe Overlay Toggle */}
+            <button
+              onClick={handleToggleSchematics}
+              className={`px-2.5 py-1 rounded border text-[10px] font-mono flex items-center gap-1 transition-colors cursor-pointer ${
+                effectiveSchematicsOpen
+                  ? 'bg-cyan-500/30 border-cyan-400 text-cyan-200 shadow-[0_0_10px_rgba(6,182,212,0.3)]'
+                  : 'bg-slate-900/80 hover:bg-slate-800 border-slate-700/80 text-slate-300'
+              }`}
+              title="Toggle Interactive 2D Ship Schematics Wireframe Overlay"
+            >
+              <Compass className="w-3 h-3 text-cyan-400" />
+              <span>SCHEMATICS</span>
+            </button>
+
             {/* Science Radar Scan Button */}
             <button
               onClick={handleTriggerScan}
@@ -1066,6 +1249,23 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Interactive 2D Ship Schematics Wireframe Overlay Modal */}
+      {effectiveSchematicsOpen && (
+        <div className="absolute inset-0 z-40 p-2 sm:p-4 flex items-center justify-center bg-black/80 backdrop-blur-md animate-in fade-in zoom-in-95">
+          <ShipSchematics
+            ship={ship}
+            crew={crew}
+            encounter={encounter}
+            mode="overlay"
+            onClose={() => {
+              if (onToggleSchematics) onToggleSchematics();
+              else setLocalSchematicsOpen(false);
+            }}
+            onSendCommand={onSendCommand}
+          />
+        </div>
+      )}
     </div>
   );
 };

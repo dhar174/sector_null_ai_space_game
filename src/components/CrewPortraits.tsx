@@ -19,6 +19,215 @@ import {
 
 export type CharacterType = 'Jax' | 'Elara';
 
+export interface StressGlowConfig {
+  effectiveStress: number;
+  emotionLabel: string;
+  isPanicOrAlarmed: boolean;
+  isStressed: boolean;
+  rgb: string;
+  hexColor: string;
+  borderHex: string;
+  boxShadow: string;
+  haloAlpha: number;
+  haloBlur: number;
+  pulseAnimation: string;
+  stressTier: 'calm' | 'elevated' | 'critical';
+  ambientGradient: string;
+  innerGradient: string;
+  statusBadgeColor: string;
+}
+
+/**
+ * Calculates responsive biometric stress glow properties.
+ * Glow spread, color warmth, pulse rhythm, and aura intensity scale
+ * continuously with the officer's real-time stress and emotional state.
+ */
+export const getStressGlowConfig = (
+  officer: CharacterType,
+  stress: number,
+  status: string,
+  overrideEmotion?: string | null,
+  curiosity: number = 30,
+  size: number = 80
+): StressGlowConfig => {
+  const isJax = officer === 'Jax';
+
+  let effectiveEmotion: string;
+  let effectiveStress = Math.max(0, Math.min(100, Math.round(stress)));
+
+  if (isJax) {
+    if (overrideEmotion) {
+      effectiveEmotion = overrideEmotion;
+      if (overrideEmotion === 'Panicking') effectiveStress = Math.max(effectiveStress, 85);
+      else if (overrideEmotion === 'Stressed') effectiveStress = Math.max(effectiveStress, 55);
+      else if (overrideEmotion === 'Nominal') effectiveStress = Math.min(effectiveStress, 18);
+    } else {
+      effectiveEmotion =
+        status === 'Panicking' || effectiveStress > 70
+          ? 'Panicking'
+          : status === 'Stressed' || effectiveStress > 35
+          ? 'Stressed'
+          : 'Nominal';
+    }
+  } else {
+    // Elara
+    if (overrideEmotion) {
+      effectiveEmotion = overrideEmotion;
+      if (overrideEmotion === 'Alarmed') effectiveStress = Math.max(effectiveStress, 85);
+      else if (overrideEmotion === 'Fascinated') effectiveStress = Math.min(effectiveStress, 18);
+      else if (overrideEmotion === 'Intrigued') effectiveStress = Math.min(effectiveStress, 22);
+      else if (overrideEmotion === 'Analytical') effectiveStress = Math.min(effectiveStress, 15);
+    } else {
+      effectiveEmotion =
+        status === 'Alarmed' || effectiveStress > 65
+          ? 'Alarmed'
+          : curiosity > 75
+          ? 'Fascinated'
+          : curiosity > 45
+          ? 'Intrigued'
+          : 'Analytical';
+    }
+  }
+
+  const isPanicOrAlarmed =
+    effectiveEmotion === 'Panicking' || effectiveEmotion === 'Alarmed' || effectiveStress > 68;
+  const isStressed = !isPanicOrAlarmed && (effectiveEmotion === 'Stressed' || effectiveStress > 35);
+  const stressTier: 'calm' | 'elevated' | 'critical' = isPanicOrAlarmed
+    ? 'critical'
+    : isStressed
+    ? 'elevated'
+    : 'calm';
+
+  // Scale factor based on portrait size
+  const scale = Math.max(0.45, Math.min(1.6, size / 75));
+
+  let rgb = '245, 158, 11';
+  let hexColor = '#f59e0b';
+  let borderHex = 'rgba(245, 158, 11, 0.4)';
+  let haloAlpha = 0.25;
+  let pulseAnimation = 'animate-stress-slow';
+  let statusBadgeColor = 'text-emerald-400 border-emerald-600 bg-emerald-950/80';
+
+  if (isJax) {
+    if (stressTier === 'critical') {
+      // Urgent Emergency Scarlet/Rose
+      const t = Math.max(0, Math.min(1, (effectiveStress - 70) / 30));
+      rgb = '244, 63, 94';
+      hexColor = '#f43f5e';
+      borderHex = `rgba(244, 63, 94, ${(0.82 + t * 0.18).toFixed(2)})`;
+      haloAlpha = Math.min(0.95, 0.65 + t * 0.3);
+      pulseAnimation = 'animate-stress-urgent';
+      statusBadgeColor = 'text-rose-300 border-rose-500 bg-rose-950/90 animate-pulse';
+    } else if (stressTier === 'elevated') {
+      // Hot Warning Amber/Orange
+      const t = Math.max(0, Math.min(1, (effectiveStress - 35) / 35));
+      rgb = '249, 115, 22';
+      hexColor = '#f97316';
+      borderHex = `rgba(249, 115, 22, ${(0.55 + t * 0.35).toFixed(2)})`;
+      haloAlpha = 0.36 + t * 0.26;
+      pulseAnimation = 'animate-stress-med';
+      statusBadgeColor = 'text-amber-300 border-amber-600 bg-amber-950/90';
+    } else {
+      // Calm Amber/Gold
+      const t = Math.max(0, Math.min(1, effectiveStress / 35));
+      rgb = '245, 158, 11';
+      hexColor = '#f59e0b';
+      borderHex = `rgba(245, 158, 11, ${(0.32 + t * 0.25).toFixed(2)})`;
+      haloAlpha = 0.18 + t * 0.18;
+      pulseAnimation = 'animate-stress-slow';
+      statusBadgeColor = 'text-emerald-300 border-emerald-600 bg-emerald-950/80';
+    }
+  } else {
+    // Elara
+    if (stressTier === 'critical') {
+      // Shocking Hazard Crimson/Rose
+      const t = Math.max(0, Math.min(1, (effectiveStress - 65) / 35));
+      rgb = '244, 63, 94';
+      hexColor = '#f43f5e';
+      borderHex = `rgba(244, 63, 94, ${(0.82 + t * 0.18).toFixed(2)})`;
+      haloAlpha = Math.min(0.95, 0.65 + t * 0.3);
+      pulseAnimation = 'animate-stress-urgent';
+      statusBadgeColor = 'text-rose-300 border-rose-500 bg-rose-950/90 animate-pulse';
+    } else if (stressTier === 'elevated') {
+      // Sensory Overload Strained Violet-Amber
+      const t = Math.max(0, Math.min(1, (effectiveStress - 35) / 30));
+      rgb = '217, 119, 6';
+      hexColor = '#f59e0b';
+      borderHex = `rgba(245, 158, 11, ${(0.55 + t * 0.35).toFixed(2)})`;
+      haloAlpha = 0.36 + t * 0.26;
+      pulseAnimation = 'animate-stress-med';
+      statusBadgeColor = 'text-amber-300 border-amber-500 bg-amber-950/90';
+    } else {
+      // Calm Tiers for Elara
+      if (effectiveEmotion === 'Fascinated') {
+        rgb = '192, 132, 252';
+        hexColor = '#c084fc';
+        borderHex = 'rgba(192, 132, 252, 0.65)';
+        haloAlpha = 0.38;
+        pulseAnimation = 'animate-stress-slow';
+        statusBadgeColor = 'text-purple-300 border-purple-500 bg-purple-950/90';
+      } else if (effectiveEmotion === 'Intrigued') {
+        rgb = '129, 140, 248';
+        hexColor = '#818cf8';
+        borderHex = 'rgba(129, 140, 248, 0.55)';
+        haloAlpha = 0.32;
+        pulseAnimation = 'animate-stress-slow';
+        statusBadgeColor = 'text-indigo-300 border-indigo-600 bg-indigo-950/80';
+      } else {
+        // Analytical Calm Cyan
+        const t = Math.max(0, Math.min(1, effectiveStress / 35));
+        rgb = '6, 182, 212';
+        hexColor = '#06b6d4';
+        borderHex = `rgba(6, 182, 212, ${(0.32 + t * 0.25).toFixed(2)})`;
+        haloAlpha = 0.2 + t * 0.18;
+        pulseAnimation = 'animate-stress-slow';
+        statusBadgeColor = 'text-cyan-300 border-cyan-500 bg-cyan-950/90';
+      }
+    }
+  }
+
+  // Dynamic box shadow calculation that scales with stress and size
+  const norm = effectiveStress / 100;
+  const tightR = Math.max(2, Math.round((3 + norm * 13) * scale));
+  const diffuseR = Math.max(5, Math.round((7 + norm * 24) * scale));
+  const spreadR = Math.max(0, Math.round((norm * 3.5) * scale));
+  const insetR = Math.max(1, Math.round((2 + norm * 9) * scale));
+
+  const tightA = (0.22 + norm * 0.65).toFixed(2);
+  const diffuseA = (0.12 + norm * 0.52).toFixed(2);
+  const insetA = (0.15 + norm * 0.55).toFixed(2);
+
+  const boxShadow = `0 0 ${tightR}px ${spreadR}px rgba(${rgb}, ${tightA}), 0 0 ${diffuseR}px rgba(${rgb}, ${diffuseA}), inset 0 0 ${insetR}px rgba(${rgb}, ${insetA})`;
+  const haloBlur = Math.max(3, Math.round((5 + norm * 11) * scale));
+
+  const ambientGradient = `radial-gradient(circle, rgba(${rgb}, ${(haloAlpha * 0.85).toFixed(2)}) 0%, rgba(${rgb}, ${(haloAlpha * 0.3).toFixed(2)}) 52%, transparent 76%)`;
+
+  const innerGradient =
+    stressTier === 'critical'
+      ? `radial-gradient(circle at 50% 30%, transparent 20%, rgba(${rgb}, 0.42) 100%)`
+      : stressTier === 'elevated'
+      ? `radial-gradient(circle at 50% 30%, transparent 38%, rgba(${rgb}, 0.25) 100%)`
+      : `radial-gradient(circle at 50% 30%, transparent 56%, rgba(${rgb}, 0.12) 100%)`;
+
+  return {
+    effectiveStress,
+    emotionLabel: effectiveEmotion,
+    isPanicOrAlarmed,
+    isStressed,
+    rgb,
+    hexColor,
+    borderHex,
+    boxShadow,
+    haloAlpha,
+    haloBlur,
+    pulseAnimation,
+    stressTier,
+    ambientGradient,
+    innerGradient,
+    statusBadgeColor,
+  };
+};
+
 interface PortraitProps {
   size?: number; // Size in px, default 80
   className?: string;
@@ -44,7 +253,7 @@ interface ElaraPortraitProps extends PortraitProps {
 
 /**
  * Expressive 2D Headshot Portrait for Jax (Chief Engineer).
- * Dynamically reacts to stress level and emotional status.
+ * Dynamically reacts to stress level and emotional status with reactive biometric glow.
  */
 export const JaxPortrait: React.FC<JaxPortraitProps> = ({
   stress,
@@ -58,20 +267,13 @@ export const JaxPortrait: React.FC<JaxPortraitProps> = ({
   hasIdleTopic = false,
   idleTopicSnippet,
 }) => {
-  // Determine effective emotional expression
-  const effectiveEmotion: 'Nominal' | 'Stressed' | 'Panicking' =
-    overrideEmotion ||
-    (status === 'Panicking' || stress > 70
-      ? 'Panicking'
-      : status === 'Stressed' || stress > 35
-      ? 'Stressed'
-      : 'Nominal');
-
-  const isPanic = effectiveEmotion === 'Panicking';
-  const isStressed = effectiveEmotion === 'Stressed';
+  const glow = getStressGlowConfig('Jax', stress, status, overrideEmotion, 0, size);
+  const effectiveEmotion = glow.emotionLabel;
+  const isPanic = glow.isPanicOrAlarmed;
+  const isStressed = glow.isStressed;
 
   // Biometric Heart Rate based on stress
-  const heartRate = Math.min(185, Math.round(68 + (stress / 100) * 88));
+  const heartRate = Math.min(185, Math.round(68 + (glow.effectiveStress / 100) * 88));
 
   return (
     <div
@@ -80,24 +282,57 @@ export const JaxPortrait: React.FC<JaxPortraitProps> = ({
         interactive ? 'cursor-pointer group' : ''
       } ${className}`}
       style={{ width: size, height: size }}
-      title={`Jax (Chief Engineer) - Emotion: ${effectiveEmotion}, Stress: ${stress}%, Heart Rate: ${heartRate} BPM (Click to inspect dossier)`}
+      title={`Jax (Chief Engineer) — Emotion: ${effectiveEmotion.toUpperCase()} | Stress: ${glow.effectiveStress}% | Heart Rate: ${heartRate} BPM (Reactive Biometric Stress Glow Active)`}
     >
+      {/* Dynamic Ambient Stress Glow Corona (Radiates outside HUD frame boundary) */}
+      <div
+        className={`absolute -inset-1 rounded-2xl pointer-events-none transition-all duration-500 ease-out ${glow.pulseAnimation}`}
+        style={{
+          background: glow.ambientGradient,
+          filter: `blur(${glow.haloBlur}px)`,
+          opacity: glow.haloAlpha,
+        }}
+      />
+
       {/* Outer Sci-Fi HUD Frame */}
       <div
-        className={`w-full h-full rounded-xl overflow-hidden border-2 relative transition-all duration-300 ${
-          isPanic
-            ? 'border-rose-500 shadow-[0_0_18px_rgba(244,63,94,0.6)] ring-2 ring-rose-500/50 animate-pulse'
-            : isStressed
-            ? 'border-amber-500 shadow-[0_0_12px_rgba(245,158,11,0.4)]'
-            : 'border-amber-500/50 hover:border-amber-400 shadow-[0_0_8px_rgba(245,158,11,0.2)]'
-        } bg-[#0c101a]`}
+        className="w-full h-full rounded-xl overflow-hidden relative transition-all duration-300 bg-[#0c101a]"
+        style={{
+          borderWidth: size >= 32 ? '2px' : '1.5px',
+          borderStyle: 'solid',
+          borderColor: glow.borderHex,
+          boxShadow: glow.boxShadow,
+        }}
       >
-        {/* Animated Emergency Strobes / Ambient Lighting */}
-        {isPanic && (
-          <div className="absolute inset-0 bg-gradient-to-t from-rose-900/60 via-rose-600/20 to-transparent pointer-events-none z-10 animate-pulse" />
+        {/* Mini Stress Aura Top Rim Accent (When size >= 32) */}
+        {size >= 32 && (
+          <div
+            className="absolute top-0 inset-x-1.5 h-[2px] rounded-full transition-all duration-300 pointer-events-none z-20"
+            style={{
+              backgroundColor: glow.hexColor,
+              boxShadow: `0 0 6px ${glow.hexColor}`,
+              opacity: 0.6 + (glow.effectiveStress / 100) * 0.4,
+            }}
+          />
         )}
-        {isStressed && (
-          <div className="absolute inset-0 bg-gradient-to-t from-amber-950/40 via-transparent to-transparent pointer-events-none z-10" />
+
+        {/* Ambient Backlight / Emotional Mood Lighting based on stress */}
+        <div
+          className="absolute inset-0 pointer-events-none z-10 transition-opacity duration-300"
+          style={{
+            background: glow.innerGradient,
+            mixBlendMode: 'screen',
+          }}
+        />
+
+        {/* Urgent Emergency Alarm Strobe */}
+        {glow.stressTier === 'critical' && (
+          <div
+            className="absolute inset-0 pointer-events-none z-10 animate-pulse"
+            style={{
+              background: `linear-gradient(to top, rgba(${glow.rgb}, 0.55) 0%, rgba(${glow.rgb}, 0.18) 45%, transparent 100%)`,
+            }}
+          />
         )}
 
         {/* 2D Expressive Vector Portrait SVG */}
@@ -358,7 +593,7 @@ export const JaxPortrait: React.FC<JaxPortraitProps> = ({
           <path
             d="M3 10 L3 3 L10 3 M97 10 L97 3 L90 3 M3 90 L3 97 L10 97 M97 90 L97 97 L90 97"
             fill="none"
-            stroke={isPanic ? '#f43f5e' : isStressed ? '#f59e0b' : '#38bdf8'}
+            stroke={glow.hexColor}
             strokeWidth="1.8"
           />
 
@@ -367,7 +602,7 @@ export const JaxPortrait: React.FC<JaxPortraitProps> = ({
             x="50"
             y="12"
             textAnchor="middle"
-            fill={isPanic ? '#fda4af' : isStressed ? '#fcd34d' : '#94a3b8'}
+            fill={glow.hexColor}
             fontSize="5.5"
             fontWeight="bold"
             fontFamily="monospace"
@@ -381,7 +616,10 @@ export const JaxPortrait: React.FC<JaxPortraitProps> = ({
         <div className="absolute inset-0 pointer-events-none bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.3)_50%)] bg-[length:100%_4px] opacity-40" />
 
         {/* Live Heart Rate Telemetry Pip (Bottom Left) */}
-        <div className="absolute bottom-1 left-1 flex items-center gap-0.5 px-1 py-0.2 rounded bg-black/75 border border-white/10 text-[8px] font-terminal text-slate-300">
+        <div
+          className="absolute bottom-1 left-1 flex items-center gap-0.5 px-1 py-0.2 rounded bg-black/85 border text-[8px] font-terminal text-slate-300 transition-colors"
+          style={{ borderColor: `rgba(${glow.rgb}, 0.35)` }}
+        >
           <Heart
             className={`w-2.5 h-2.5 ${
               isPanic
@@ -395,17 +633,18 @@ export const JaxPortrait: React.FC<JaxPortraitProps> = ({
         </div>
 
         {/* Stress Bar Pill (Bottom Right) */}
-        <div className="absolute bottom-1 right-1 px-1 py-0.2 rounded bg-black/75 border border-white/10 text-[8px] font-terminal">
+        <div
+          className="absolute bottom-1 right-1 px-1 py-0.2 rounded bg-black/85 border text-[8px] font-terminal transition-all"
+          style={{
+            borderColor: `rgba(${glow.rgb}, 0.45)`,
+            boxShadow: `0 0 6px rgba(${glow.rgb}, ${Math.min(0.6, glow.haloAlpha)})`,
+          }}
+        >
           <span
-            className={`font-bold ${
-              isPanic
-                ? 'text-rose-400'
-                : isStressed
-                ? 'text-amber-400'
-                : 'text-emerald-400'
-            }`}
+            className="font-bold font-mono"
+            style={{ color: glow.hexColor }}
           >
-            {stress}%
+            {glow.effectiveStress}%
           </span>
         </div>
 
@@ -424,13 +663,7 @@ export const JaxPortrait: React.FC<JaxPortraitProps> = ({
       {showStatusBadge && (
         <div className="mt-1 text-center">
           <span
-            className={`inline-block text-[9px] font-terminal px-1.5 py-0.5 rounded border uppercase tracking-wider ${
-              isPanic
-                ? 'bg-rose-950/90 text-rose-300 border-rose-500 animate-pulse'
-                : isStressed
-                ? 'bg-amber-950/90 text-amber-300 border-amber-600'
-                : 'bg-emerald-950/80 text-emerald-300 border-emerald-600'
-            }`}
+            className={`inline-block text-[9px] font-terminal px-1.5 py-0.5 rounded border uppercase tracking-wider ${glow.statusBadgeColor}`}
           >
             {effectiveEmotion}
           </span>
@@ -457,23 +690,14 @@ export const ElaraPortrait: React.FC<ElaraPortraitProps> = ({
   hasIdleTopic = false,
   idleTopicSnippet,
 }) => {
-  // Determine effective emotional expression
-  const effectiveEmotion: 'Analytical' | 'Intrigued' | 'Fascinated' | 'Alarmed' =
-    overrideEmotion ||
-    (status === 'Alarmed' || stress > 65
-      ? 'Alarmed'
-      : curiosity > 75
-      ? 'Fascinated'
-      : curiosity > 45
-      ? 'Intrigued'
-      : 'Analytical');
-
-  const isAlarmed = effectiveEmotion === 'Alarmed';
+  const glow = getStressGlowConfig('Elara', stress, status, overrideEmotion, curiosity, size);
+  const effectiveEmotion = glow.emotionLabel;
+  const isAlarmed = glow.isPanicOrAlarmed;
   const isFascinated = effectiveEmotion === 'Fascinated';
   const isIntrigued = effectiveEmotion === 'Intrigued';
 
   // Biometric Heart Rate based on stress
-  const heartRate = Math.min(175, Math.round(62 + (stress / 100) * 78));
+  const heartRate = Math.min(175, Math.round(62 + (glow.effectiveStress / 100) * 78));
 
   return (
     <div
@@ -482,26 +706,57 @@ export const ElaraPortrait: React.FC<ElaraPortraitProps> = ({
         interactive ? 'cursor-pointer group' : ''
       } ${className}`}
       style={{ width: size, height: size }}
-      title={`Elara (Science Officer) - Emotion: ${effectiveEmotion}, Stress: ${stress}%, Curiosity: ${curiosity}%, Heart Rate: ${heartRate} BPM (Click to inspect dossier)`}
+      title={`Elara (Science Officer) — Emotion: ${effectiveEmotion.toUpperCase()} | Stress: ${glow.effectiveStress}% | Curiosity: ${curiosity}% | Heart Rate: ${heartRate} BPM (Reactive Biometric Stress Glow Active)`}
     >
+      {/* Dynamic Ambient Stress Glow Corona (Radiates outside HUD frame boundary) */}
+      <div
+        className={`absolute -inset-1 rounded-2xl pointer-events-none transition-all duration-500 ease-out ${glow.pulseAnimation}`}
+        style={{
+          background: glow.ambientGradient,
+          filter: `blur(${glow.haloBlur}px)`,
+          opacity: glow.haloAlpha,
+        }}
+      />
+
       {/* Outer Sci-Fi HUD Frame */}
       <div
-        className={`w-full h-full rounded-xl overflow-hidden border-2 relative transition-all duration-300 ${
-          isAlarmed
-            ? 'border-rose-500 shadow-[0_0_18px_rgba(244,63,94,0.6)] ring-2 ring-rose-500/50 animate-pulse'
-            : isFascinated
-            ? 'border-cyan-400 shadow-[0_0_16px_rgba(6,182,212,0.6)] ring-1 ring-cyan-400/40'
-            : isIntrigued
-            ? 'border-indigo-400 shadow-[0_0_10px_rgba(99,102,241,0.4)]'
-            : 'border-cyan-500/50 hover:border-cyan-400 shadow-[0_0_8px_rgba(6,182,212,0.2)]'
-        } bg-[#080d1a]`}
+        className="w-full h-full rounded-xl overflow-hidden relative transition-all duration-300 bg-[#080d1a]"
+        style={{
+          borderWidth: size >= 32 ? '2px' : '1.5px',
+          borderStyle: 'solid',
+          borderColor: glow.borderHex,
+          boxShadow: glow.boxShadow,
+        }}
       >
-        {/* Animated Emergency Strobe / Cosmic Aurora Lighting */}
-        {isAlarmed && (
-          <div className="absolute inset-0 bg-gradient-to-t from-rose-950/60 via-rose-600/20 to-transparent pointer-events-none z-10 animate-pulse" />
+        {/* Mini Stress Aura Top Rim Accent (When size >= 32) */}
+        {size >= 32 && (
+          <div
+            className="absolute top-0 inset-x-1.5 h-[2px] rounded-full transition-all duration-300 pointer-events-none z-20"
+            style={{
+              backgroundColor: glow.hexColor,
+              boxShadow: `0 0 6px ${glow.hexColor}`,
+              opacity: 0.6 + (glow.effectiveStress / 100) * 0.4,
+            }}
+          />
         )}
-        {isFascinated && (
-          <div className="absolute inset-0 bg-gradient-to-t from-cyan-900/40 via-purple-900/20 to-transparent pointer-events-none z-10" />
+
+        {/* Ambient Backlight / Emotional Mood Lighting based on stress */}
+        <div
+          className="absolute inset-0 pointer-events-none z-10 transition-opacity duration-300"
+          style={{
+            background: glow.innerGradient,
+            mixBlendMode: 'screen',
+          }}
+        />
+
+        {/* Urgent Emergency Alarm Strobe */}
+        {glow.stressTier === 'critical' && (
+          <div
+            className="absolute inset-0 pointer-events-none z-10 animate-pulse"
+            style={{
+              background: `linear-gradient(to top, rgba(${glow.rgb}, 0.55) 0%, rgba(${glow.rgb}, 0.18) 45%, transparent 100%)`,
+            }}
+          />
         )}
 
         {/* 2D Expressive Vector Portrait SVG */}
@@ -782,7 +1037,7 @@ export const ElaraPortrait: React.FC<ElaraPortraitProps> = ({
           <path
             d="M3 10 L3 3 L10 3 M97 10 L97 3 L90 3 M3 90 L3 97 L10 97 M97 90 L97 97 L90 97"
             fill="none"
-            stroke={isAlarmed ? '#f43f5e' : isFascinated ? '#06b6d4' : '#38bdf8'}
+            stroke={glow.hexColor}
             strokeWidth="1.8"
           />
 
@@ -791,7 +1046,7 @@ export const ElaraPortrait: React.FC<ElaraPortraitProps> = ({
             x="50"
             y="12"
             textAnchor="middle"
-            fill={isAlarmed ? '#fda4af' : isFascinated ? '#67e8f9' : '#94a3b8'}
+            fill={glow.hexColor}
             fontSize="5.5"
             fontWeight="bold"
             fontFamily="monospace"
@@ -805,7 +1060,10 @@ export const ElaraPortrait: React.FC<ElaraPortraitProps> = ({
         <div className="absolute inset-0 pointer-events-none bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.3)_50%)] bg-[length:100%_4px] opacity-40" />
 
         {/* Live Heart Rate Telemetry Pip (Bottom Left) */}
-        <div className="absolute bottom-1 left-1 flex items-center gap-0.5 px-1 py-0.2 rounded bg-black/75 border border-white/10 text-[8px] font-terminal text-slate-300">
+        <div
+          className="absolute bottom-1 left-1 flex items-center gap-0.5 px-1 py-0.2 rounded bg-black/85 border text-[8px] font-terminal text-slate-300 transition-colors"
+          style={{ borderColor: `rgba(${glow.rgb}, 0.35)` }}
+        >
           <Heart
             className={`w-2.5 h-2.5 ${
               isAlarmed
@@ -819,17 +1077,18 @@ export const ElaraPortrait: React.FC<ElaraPortraitProps> = ({
         </div>
 
         {/* Curiosity / Stress Pill (Bottom Right) */}
-        <div className="absolute bottom-1 right-1 px-1 py-0.2 rounded bg-black/75 border border-white/10 text-[8px] font-terminal">
+        <div
+          className="absolute bottom-1 right-1 px-1 py-0.2 rounded bg-black/85 border text-[8px] font-terminal transition-all"
+          style={{
+            borderColor: `rgba(${glow.rgb}, 0.45)`,
+            boxShadow: `0 0 6px rgba(${glow.rgb}, ${Math.min(0.6, glow.haloAlpha)})`,
+          }}
+        >
           <span
-            className={`font-bold ${
-              isAlarmed
-                ? 'text-rose-400'
-                : isFascinated
-                ? 'text-cyan-300'
-                : 'text-indigo-300'
-            }`}
+            className="font-bold font-mono"
+            style={{ color: glow.hexColor }}
           >
-            {isAlarmed ? `${stress}% STR` : `${curiosity}% CUR`}
+            {isAlarmed ? `${glow.effectiveStress}% STR` : `${curiosity}% CUR`}
           </span>
         </div>
 
@@ -848,13 +1107,7 @@ export const ElaraPortrait: React.FC<ElaraPortraitProps> = ({
       {showStatusBadge && (
         <div className="mt-1 text-center">
           <span
-            className={`inline-block text-[9px] font-terminal px-1.5 py-0.5 rounded border uppercase tracking-wider ${
-              isAlarmed
-                ? 'bg-rose-950/90 text-rose-300 border-rose-500 animate-pulse'
-                : isFascinated
-                ? 'bg-cyan-950/90 text-cyan-300 border-cyan-500'
-                : 'bg-indigo-950/80 text-indigo-300 border-indigo-600'
-            }`}
+            className={`inline-block text-[9px] font-terminal px-1.5 py-0.5 rounded border uppercase tracking-wider ${glow.statusBadgeColor}`}
           >
             {effectiveEmotion}
           </span>

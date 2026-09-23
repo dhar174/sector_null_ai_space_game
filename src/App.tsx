@@ -18,8 +18,9 @@ import {
   shouldTriggerCriticalHullAlert,
 } from './game/crewAI';
 import { sound } from './utils/audio';
-import { Rocket, Shield, Radio, Sparkles, Users, MessageSquare } from 'lucide-react';
+import { Rocket, Shield, Radio, Sparkles, Users, MessageSquare, Compass } from 'lucide-react';
 import { OfficerDossierModal, CharacterType, JaxPortrait, ElaraPortrait } from './components/CrewPortraits';
+import { ShipSchematics } from './components/ShipSchematics';
 
 const INITIAL_SHIP_STATE: ShipState = {
   hull: 100,
@@ -52,6 +53,21 @@ export default function App() {
   const [ordersCount, setOrdersCount] = useState<number>(0);
   const [encountersCount, setEncountersCount] = useState<number>(0);
   const [dossierOfficer, setDossierOfficer] = useState<CharacterType | null>(null);
+  const [isSchematicsOpen, setIsSchematicsOpen] = useState<boolean>(false);
+
+  // Keyboard shortcut 'S' for toggling 2D Ship Schematics (when not typing in inputs)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const activeTag = document.activeElement?.tagName.toLowerCase();
+      if (activeTag === 'input' || activeTag === 'textarea') return;
+      if (e.key === 's' || e.key === 'S') {
+        e.preventDefault();
+        setIsSchematicsOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   // Idle crew conversation topics system
   const [activeIdleTopic, setActiveIdleTopic] = useState<IdleTopic | null>(null);
@@ -671,6 +687,30 @@ export default function App() {
             </span>
           </div>
 
+          {/* 2D Ship Schematics Header Toggle Button */}
+          <button
+            onClick={() => setIsSchematicsOpen((prev) => !prev)}
+            className={`px-2.5 py-1 rounded-md border text-[11px] flex items-center gap-1.5 transition-all cursor-pointer ${
+              isSchematicsOpen
+                ? 'bg-cyan-500/30 border-cyan-400 text-cyan-200 shadow-[0_0_12px_rgba(6,182,212,0.3)]'
+                : 'bg-slate-900/90 hover:bg-slate-800 border-slate-700/80 text-slate-300 hover:text-cyan-200'
+            }`}
+            title="Toggle Interactive 2D Ship Schematics (HotKey: 'S')"
+          >
+            <Compass className="w-3.5 h-3.5 text-cyan-400" />
+            <span className="hidden sm:inline font-bold">SCHEMATICS</span>
+            <span
+              className={`w-2 h-2 rounded-full ${
+                ship.hull > 60
+                  ? 'bg-emerald-400'
+                  : ship.hull > 30
+                  ? 'bg-amber-400'
+                  : 'bg-rose-400 animate-ping'
+              }`}
+              title={`Ship Hull Integrity: ${Math.round(ship.hull)}%`}
+            />
+          </button>
+
           <button
             onClick={() => setIsSettingsOpen(true)}
             className="px-2.5 py-1 rounded-md bg-cyan-950/60 hover:bg-cyan-900/80 border border-cyan-700/50 text-cyan-300 text-[11px] flex items-center gap-1.5 transition-colors cursor-pointer"
@@ -688,6 +728,10 @@ export default function App() {
             ship={ship}
             encounter={encounter}
             rendererRef={rendererRef}
+            crew={crew}
+            onSendCommand={handleSendCommand}
+            isSchematicsOpen={isSchematicsOpen}
+            onToggleSchematics={() => setIsSchematicsOpen((prev) => !prev)}
           />
         </div>
 
@@ -701,6 +745,7 @@ export default function App() {
             onSendCommand={handleSendCommand}
             activeIdleTopic={activeIdleTopic}
             onSelectIdleTopic={handleSelectIdleTopic}
+            onOpenFullSchematics={() => setIsSchematicsOpen(true)}
           />
         </div>
 

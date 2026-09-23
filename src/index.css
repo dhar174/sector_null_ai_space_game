@@ -69,3 +69,49 @@
   animation: audioWaveC 0.7s ease-in-out infinite 0.3s;
 }
 
+/* Crew Portrait Reactive Stress Glow Animations */
+@keyframes stressPulseSlow {
+  0%, 100% {
+    opacity: 0.35;
+    transform: scale(0.99);
+  }
+  50% {
+    opacity: 0.65;
+    transform: scale(1.02);
+  }
+}
+
+@keyframes stressPulseMed {
+  0%, 100% {
+    opacity: 0.45;
+    transform: scale(0.98);
+  }
+  50% {
+    opacity: 0.85;
+    transform: scale(1.04);
+  }
+}
+
+@keyframes stressPulseUrgent {
+  0%, 100% {
+    opacity: 0.6;
+    transform: scale(0.96);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.08);
+  }
+}
+
+.animate-stress-slow {
+  animation: stressPulseSlow 3.8s ease-in-out infinite;
+}
+
+.animate-stress-med {
+  animation: stressPulseMed 1.9s ease-in-out infinite;
+}
+
+.animate-stress-urgent {
+  animation: stressPulseUrgent 0.85s ease-in-out infinite;
+}
+

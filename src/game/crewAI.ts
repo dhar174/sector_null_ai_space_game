@@ -300,6 +300,7 @@ export async function sendCrewCommand(
       currentEncounter,
       recentHistory: recentDialogue.slice(-4),
       provider: settings.provider,
+      model: settings.model || (settings.provider === 'openai' ? 'gpt-5.4-nano' : 'gemini-3.8-flash'),
       customKey: customKey || undefined,
     };
 

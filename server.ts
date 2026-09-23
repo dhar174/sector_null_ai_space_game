@@ -23,7 +23,9 @@ app.get("/api/health", (req, res) => {
 app.get("/api/config", (req, res) => {
   res.json({
     hasGeminiKey: Boolean(process.env.GEMINI_API_KEY),
-    defaultModel: "gemini-3.8-flash",
+    hasOpenAiKey: Boolean(process.env.OPENAI_API_KEY),
+    defaultModel: "gemini-3.5-flash-lite",
+    openAiModel: "gpt-5.4-nano",
   });
 });
 
@@ -102,17 +104,26 @@ app.post("/api/crew-command", async (req, res) => {
 
     const effectiveGeminiKey = customKey || process.env.GEMINI_API_KEY;
 
-    // Handle OpenAI if user selected OpenAI and provided their custom key
-    if (provider === "openai" && customKey) {
+    // Handle OpenAI if user selected OpenAI
+    const effectiveOpenAiKey = customKey || process.env.OPENAI_API_KEY;
+    if (provider === "openai") {
+      if (!effectiveOpenAiKey) {
+        return res.status(401).json({
+          error: "No OpenAI API key detected. Please provide your OpenAI API key in Settings or switch to Gemini Flash / Simulation mode.",
+          fallbackNeeded: true,
+        });
+      }
+
       try {
+        const requestedModel = req.body.model || "gpt-5.4-nano";
         const openAiResponse = await fetch("https://api.openai.com/v1/chat/completions", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${customKey}`,
+            Authorization: `Bearer ${effectiveOpenAiKey}`,
           },
           body: JSON.stringify({
-            model: "gpt-4o-mini",
+            model: requestedModel,
             response_format: { type: "json_object" },
             messages: [
               {
@@ -333,25 +344,29 @@ Determine the routed officer, classify the intent ("action", "query", or "conver
       },
     };
 
-    let response;
-    try {
-      response = await ai.models.generateContent({
-        model: "gemini-3.8-flash",
-        contents: promptText,
-        config,
-      });
-    } catch (primaryErr: any) {
-      const errMsg = (primaryErr as Error)?.message || "";
-      if (errMsg.includes("503") || errMsg.includes("UNAVAILABLE") || errMsg.includes("high demand")) {
-        console.warn("Primary model 503 high demand, attempting fallback to gemini-3.1-flash-lite...");
+    const candidateModels = ["gemini-3.5-flash-lite", "gemini-3.6-flash", "gemini-3.1-flash-lite", "gemini-3.8-flash"];
+    let response: any = null;
+    let lastGeminiErr: any = null;
+
+    for (const candModel of candidateModels) {
+      try {
         response = await ai.models.generateContent({
-          model: "gemini-3.1-flash-lite",
+          model: candModel,
           contents: promptText,
           config,
         });
-      } else {
-        throw primaryErr;
+        if (response && response.text) {
+          break;
+        }
+      } catch (geminiErr: any) {
+        lastGeminiErr = geminiErr;
+        const errMsg = geminiErr?.message || "";
+        console.warn(`Model ${candModel} failed (${errMsg.slice(0, 80)}), trying next candidate...`);
       }
+    }
+
+    if (!response || !response.text) {
+      throw lastGeminiErr || new Error("All Gemini candidate models failed to generate content.");
     }
 
     const responseText = response.text || "{}";

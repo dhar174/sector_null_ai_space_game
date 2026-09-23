@@ -46,6 +46,34 @@ class SoundEngine {
     }
   }
 
+  // Quick crisp UI button click beep
+  public playButtonBeep(pitch: number = 980) {
+    if (!this.enabled) return;
+    this.initCtx();
+    if (!this.ctx) return;
+
+    try {
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(pitch, now);
+      osc.frequency.exponentialRampToValueAtTime(pitch * 1.2, now + 0.04);
+
+      gain.gain.setValueAtTime(0.04, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+
+      osc.start(now);
+      osc.stop(now + 0.05);
+    } catch {
+      // Failsafe
+    }
+  }
+
   // Subtle ambient chime when crew member has a new idle topic available
   public playIdleChirp(officer: 'Jax' | 'Elara' = 'Elara') {
     if (!this.enabled) return;
@@ -193,6 +221,50 @@ class SoundEngine {
 
       osc.start(now);
       osc.stop(now + 0.5);
+    } catch {
+      // Failsafe
+    }
+  }
+
+  // Active radar sensor ping sound with acoustic decay and harmonic resonance
+  public playRadarPing(isHighAlert: boolean = false) {
+    if (!this.enabled) return;
+    this.initCtx();
+    if (!this.ctx) return;
+
+    try {
+      const now = this.ctx.currentTime;
+      const baseFreq = isHighAlert ? 1520 : 1180;
+
+      // Primary tone
+      const osc1 = this.ctx.createOscillator();
+      const gain1 = this.ctx.createGain();
+      osc1.type = 'sine';
+      osc1.frequency.setValueAtTime(baseFreq, now);
+      osc1.frequency.exponentialRampToValueAtTime(baseFreq * 0.92, now + 0.55);
+
+      gain1.gain.setValueAtTime(0.12, now);
+      gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.58);
+
+      osc1.connect(gain1);
+      gain1.connect(this.ctx.destination);
+      osc1.start(now);
+      osc1.stop(now + 0.58);
+
+      // Sub-harmonic resonant chime
+      const osc2 = this.ctx.createOscillator();
+      const gain2 = this.ctx.createGain();
+      osc2.type = 'triangle';
+      osc2.frequency.setValueAtTime(baseFreq * 0.5, now);
+      osc2.frequency.exponentialRampToValueAtTime(baseFreq * 0.48, now + 0.7);
+
+      gain2.gain.setValueAtTime(0.06, now);
+      gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.72);
+
+      osc2.connect(gain2);
+      gain2.connect(this.ctx.destination);
+      osc2.start(now);
+      osc2.stop(now + 0.72);
     } catch {
       // Failsafe
     }

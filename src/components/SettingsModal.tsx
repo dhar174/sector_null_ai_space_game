@@ -29,6 +29,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     onSaveSettings({
       ...settings,
       provider,
+      model: provider === 'openai' ? 'gpt-5.4-nano' : (settings.model || 'gemini-3.8-flash'),
       customGeminiKey: geminiKey.trim(),
       customOpenAiKey: openAiKey.trim(),
       soundEnabled,
@@ -88,7 +89,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               }`}
             >
               <div className="font-bold font-display text-sm">OpenAI</div>
-              <div className="text-[10px] text-slate-400 mt-0.5">GPT-4o-mini Key</div>
+              <div className="text-[10px] text-slate-400 mt-0.5">GPT-5.4-nano Key</div>
             </button>
 
             <button
@@ -145,7 +146,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               className="w-full bg-slate-900 border border-slate-700 focus:border-emerald-400 rounded px-3 py-2 text-xs font-terminal text-slate-100 placeholder:text-slate-600 focus:outline-none"
             />
             <p className="text-[11px] text-slate-400">
-              Calls GPT-4o-mini for structured dialogue and game state JSON actions. Key stays in session memory.
+              Calls GPT-5.4-nano for structured dialogue and game state JSON actions. Key stays in session memory.
             </p>
           </div>
         )}

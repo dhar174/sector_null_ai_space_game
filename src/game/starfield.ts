@@ -13,7 +13,7 @@ import {
 interface Star {
   x: number;
   y: number;
-  z: number; // 0 to 1 depth
+  z: number; // 0 (far/slow) to 1 (near/fast) depth
   size: number;
   speedMultiplier: number;
   alpha: number;
@@ -21,7 +21,128 @@ interface Star {
   color: string;
   twinkleSpeed: number;
   twinkleOffset: number;
+  layer: number; // 0: distant, 1: mid, 2: foreground
 }
+
+export interface SectorVisualProfile {
+  name: string;
+  themeTitle: string;
+  spaceGradients: [string, string, string];
+  nebulaLobeA: { color0: string; color1: string; pos: [number, number]; radius: number };
+  nebulaLobeB: { color0: string; color1: string; pos: [number, number]; radius: number };
+  dustColor: string;
+  dustCount: number;
+  starDensity: number; // Star count for this sector
+  starColors: string[];
+  gridColor: string;
+  planetHue: number;
+  planetRings: boolean;
+  planetLabel: string;
+  ambientParticles?: boolean;
+}
+
+export const SECTOR_VISUAL_PROFILES: Record<number, SectorVisualProfile> = {
+  1: {
+    name: 'Sector 01 - Orion Verge',
+    themeTitle: 'ORION EXPEDITION ZONE',
+    spaceGradients: ['#0a0e1c', '#050710', '#020307'],
+    nebulaLobeA: {
+      color0: 'rgba(14, 165, 233, 0.12)',
+      color1: 'rgba(99, 102, 241, 0.05)',
+      pos: [0.28, 0.3],
+      radius: 0.45,
+    },
+    nebulaLobeB: {
+      color0: 'rgba(217, 70, 239, 0.08)',
+      color1: 'rgba(147, 51, 234, 0.03)',
+      pos: [0.72, 0.65],
+      radius: 0.4,
+    },
+    dustColor: '#bae6fd',
+    dustCount: 45,
+    starDensity: 280,
+    starColors: ['#ffffff', '#c7d2fe', '#7dd3fc', '#fef08a', '#fed7aa', '#fca5a5'],
+    gridColor: 'rgba(56, 189, 248, 0.18)',
+    planetHue: 205,
+    planetRings: true,
+    planetLabel: 'Gas Giant Aegis-Prime',
+  },
+  2: {
+    name: 'Sector Null - Remnant Void',
+    themeTitle: 'CRIMSON ION REMNANT',
+    spaceGradients: ['#160812', '#0e050d', '#050205'],
+    nebulaLobeA: {
+      color0: 'rgba(244, 63, 94, 0.15)',
+      color1: 'rgba(190, 18, 60, 0.06)',
+      pos: [0.35, 0.25],
+      radius: 0.52,
+    },
+    nebulaLobeB: {
+      color0: 'rgba(249, 115, 22, 0.12)',
+      color1: 'rgba(180, 83, 9, 0.04)',
+      pos: [0.65, 0.75],
+      radius: 0.45,
+    },
+    dustColor: '#fed7aa',
+    dustCount: 65,
+    starDensity: 360,
+    starColors: ['#ffffff', '#fed7aa', '#fca5a5', '#f87171', '#fbbf24', '#ffedd5'],
+    gridColor: 'rgba(244, 63, 94, 0.22)',
+    planetHue: 15,
+    planetRings: false,
+    planetLabel: 'Barren Smoldering Core',
+  },
+  3: {
+    name: 'Sector Null - Tachyon Abyss',
+    themeTitle: 'TACHYON SINGULARITY VEIL',
+    spaceGradients: ['#110822', '#080415', '#03010a'],
+    nebulaLobeA: {
+      color0: 'rgba(168, 85, 247, 0.18)',
+      color1: 'rgba(126, 34, 206, 0.08)',
+      pos: [0.22, 0.4],
+      radius: 0.5,
+    },
+    nebulaLobeB: {
+      color0: 'rgba(192, 132, 252, 0.14)',
+      color1: 'rgba(79, 70, 229, 0.06)',
+      pos: [0.78, 0.55],
+      radius: 0.48,
+    },
+    dustColor: '#e9d5ff',
+    dustCount: 80,
+    starDensity: 440,
+    starColors: ['#ffffff', '#e9d5ff', '#c084fc', '#a855f7', '#818cf8', '#67e8f9'],
+    gridColor: 'rgba(168, 85, 247, 0.24)',
+    planetHue: 280,
+    planetRings: true,
+    planetLabel: 'Singularity Event Horizon',
+  },
+  4: {
+    name: 'Sector Null - Deep Core Singularity',
+    themeTitle: 'QUANTUM GRAVITON WELL',
+    spaceGradients: ['#041a18', '#020e0d', '#010505'],
+    nebulaLobeA: {
+      color0: 'rgba(20, 184, 166, 0.2)',
+      color1: 'rgba(13, 148, 136, 0.08)',
+      pos: [0.3, 0.35],
+      radius: 0.55,
+    },
+    nebulaLobeB: {
+      color0: 'rgba(16, 185, 129, 0.16)',
+      color1: 'rgba(5, 150, 105, 0.07)',
+      pos: [0.7, 0.6],
+      radius: 0.5,
+    },
+    dustColor: '#99f6e4',
+    dustCount: 100,
+    starDensity: 520,
+    starColors: ['#ffffff', '#99f6e4', '#2dd4bf', '#34d399', '#6ee7b7', '#a7f3d0'],
+    gridColor: 'rgba(20, 184, 166, 0.28)',
+    planetHue: 165,
+    planetRings: true,
+    planetLabel: 'Supermassive Chrono-Anchor',
+  },
+};
 
 interface Particle {
   x: number;
@@ -80,6 +201,16 @@ export class SpaceRenderer {
   private isScanning: boolean = false;
   public shakeIntensity: number = 0;
 
+  // Radar Sweep & Active Sensor Ping System
+  private isRadarSweeping: boolean = false;
+  private radarSweepElapsed: number = 0;
+  private radarSweepDuration: number = 2.8; // Duration in seconds
+  private radarSweepAngle: number = -Math.PI / 2;
+  private radarTargetPingPos: { x: number; y: number } | null = null;
+  private radarPingColor: string = '#06b6d4';
+  private radarContactAcquired: boolean = false;
+  private onContactPingAcquired?: () => void;
+
   // Flight dynamics & banking
   private shipVisualX: number = 0;
   private shipVisualY: number = 0;
@@ -95,6 +226,17 @@ export class SpaceRenderer {
 
   // Celestial background feature (drifting gas giant / moon)
   private planet: CelestialPlanet | null = null;
+
+  // Sector Level visual transition tracking
+  public currentSectorLevel: number = 1;
+  private targetSectorLevel: number = 1;
+  private sectorTransitionProgress: number = 1; // 0 to 1 during transition
+  private previousVisualProfile: SectorVisualProfile = SECTOR_VISUAL_PROFILES[1];
+  private currentVisualProfile: SectorVisualProfile = SECTOR_VISUAL_PROFILES[1];
+
+  // Dynamic Parallax Motion State
+  private lateralParallaxOffset: number = 0; // Cumulative horizontal drift from speed/steering
+  private verticalParallaxOffset: number = 0; // Cumulative forward parallax shift
 
   // Display properties config
   public displayProps: DisplayProperties = {
@@ -138,30 +280,96 @@ export class SpaceRenderer {
     this.targetBankAngle = 0;
   }
 
-  private initEnvironment() {
+  public getVisualProfile(sectorLevel: number = this.currentSectorLevel): SectorVisualProfile {
+    const clamped = Math.max(1, Math.min(4, Math.floor(sectorLevel)));
+    return SECTOR_VISUAL_PROFILES[clamped] || SECTOR_VISUAL_PROFILES[1];
+  }
+
+  public updateSectorProfile(targetLevel: number, immediate: boolean = false) {
+    const safeTarget = Math.max(1, Math.min(4, Math.floor(targetLevel)));
+    if (this.targetSectorLevel === safeTarget && !immediate) return;
+
+    this.previousVisualProfile = this.currentVisualProfile;
+    this.targetSectorLevel = safeTarget;
+    this.currentSectorLevel = safeTarget;
+    this.currentVisualProfile = this.getVisualProfile(safeTarget);
+
+    if (immediate) {
+      this.sectorTransitionProgress = 1;
+      this.initEnvironment();
+    } else {
+      this.sectorTransitionProgress = 0; // Trigger smooth crossfade transition
+      this.rebalanceStarDensity(this.currentVisualProfile.starDensity, this.currentVisualProfile.starColors);
+    }
+  }
+
+  private rebalanceStarDensity(targetCount: number, colors: string[]) {
     const w = this.canvas.width || 800;
     const h = this.canvas.height || 600;
 
-    // 1. Starfield layers
+    // Smoothly adjust star array without popping existing stars
+    if (this.stars.length < targetCount) {
+      const needed = targetCount - this.stars.length;
+      for (let i = 0; i < needed; i++) {
+        const z = Math.random();
+        const layer = z < 0.35 ? 0 : z < 0.75 ? 1 : 2;
+        this.stars.push({
+          x: Math.random() * w,
+          y: Math.random() * h,
+          z,
+          layer,
+          size: (1 - z * 0.6) * 1.8 + 0.5,
+          speedMultiplier: (1 - z * 0.75) * 1.2 + 0.15,
+          alpha: 0, // Fade in
+          baseAlpha: Math.random() * 0.5 + 0.4,
+          color: colors[Math.floor(Math.random() * colors.length)],
+          twinkleSpeed: Math.random() * 3 + 1,
+          twinkleOffset: Math.random() * Math.PI * 2,
+        });
+      }
+    } else if (this.stars.length > targetCount) {
+      // Trim excess stars gradually
+      this.stars.length = targetCount;
+    }
+
+    // Refresh cosmic dust density for the sector
+    const targetDust = this.currentVisualProfile.dustCount;
+    if (this.cosmicDust.length !== targetDust) {
+      this.cosmicDust = [];
+      for (let i = 0; i < targetDust; i++) {
+        this.cosmicDust.push({
+          x: Math.random() * w,
+          y: Math.random() * h,
+          speed: Math.random() * 1.8 + 1.2,
+          size: Math.random() * 1.2 + 0.5,
+          alpha: Math.random() * 0.4 + 0.15,
+        });
+      }
+    }
+  }
+
+  private initEnvironment() {
+    const w = this.canvas.width || 800;
+    const h = this.canvas.height || 600;
+    const profile = this.currentVisualProfile;
+
+    // 1. Starfield layers with 3-tier Parallax Depths
     this.stars = [];
-    const starCount = 260;
-    const spectralColors = [
-      '#ffffff', // White main sequence
-      '#c7d2fe', // Blue-white giant
-      '#7dd3fc', // Cyan hypergiant
-      '#fef08a', // Yellow dwarf
-      '#fed7aa', // Amber orange
-      '#fca5a5', // Red dwarf
-    ];
+    const starCount = profile.starDensity || 280;
+    const spectralColors = profile.starColors;
 
     for (let i = 0; i < starCount; i++) {
       const z = Math.random();
+      // layer: 0 = background deep space (low speed, small, faint),
+      // 1 = midground (medium speed), 2 = foreground drift (fast, bright, high parallax)
+      const layer = z < 0.4 ? 0 : z < 0.8 ? 1 : 2;
       this.stars.push({
         x: Math.random() * w,
         y: Math.random() * h,
         z,
-        size: (1 - z * 0.6) * 1.8 + 0.5,
-        speedMultiplier: (1 - z * 0.75) * 1.2 + 0.15,
+        layer,
+        size: layer === 2 ? Math.random() * 1.2 + 1.8 : (1 - z * 0.6) * 1.6 + 0.5,
+        speedMultiplier: layer === 2 ? (1 - z * 0.5) * 1.9 + 1.1 : (1 - z * 0.75) * 1.2 + 0.15,
         alpha: Math.random() * 0.5 + 0.4,
         baseAlpha: Math.random() * 0.5 + 0.4,
         color: spectralColors[Math.floor(Math.random() * spectralColors.length)],
@@ -170,9 +378,10 @@ export class SpaceRenderer {
       });
     }
 
-    // 2. High-speed Cosmic Dust Motes
+    // 2. High-speed Cosmic Dust Motes scaled to sector
     this.cosmicDust = [];
-    for (let i = 0; i < 40; i++) {
+    const dustCount = profile.dustCount || 45;
+    for (let i = 0; i < dustCount; i++) {
       this.cosmicDust.push({
         x: Math.random() * w,
         y: Math.random() * h,
@@ -182,13 +391,13 @@ export class SpaceRenderer {
       });
     }
 
-    // 3. Distant celestial body
+    // 3. Distant celestial body customized by sector
     this.planet = {
       x: w * 0.78,
       y: h * 0.22,
       radius: Math.min(w, h) * 0.14,
-      hue: 205, // Azure gas giant with rings
-      rings: true,
+      hue: profile.planetHue,
+      rings: profile.planetRings,
       angle: -0.35,
     };
   }
@@ -208,6 +417,24 @@ export class SpaceRenderer {
   public triggerScan() {
     this.isScanning = true;
     this.scanWaveRadius = 15;
+  }
+
+  public triggerRadarSweep(
+    targetPos?: { x: number; y: number },
+    color: string = '#06b6d4',
+    onContactAcquired?: () => void
+  ) {
+    this.isRadarSweeping = true;
+    this.radarSweepElapsed = 0;
+    this.radarSweepAngle = -Math.PI / 2;
+    this.radarTargetPingPos = targetPos || null;
+    this.radarPingColor = color;
+    this.radarContactAcquired = false;
+    this.onContactPingAcquired = onContactAcquired;
+  }
+
+  public isRadarActive(): boolean {
+    return this.isRadarSweeping;
   }
 
   public addImpactSparks(x: number, y: number, color: string = '#f87171', count: number = 28) {
@@ -784,6 +1011,12 @@ export class SpaceRenderer {
     this.lastTime = now;
     this.engineGlowPhase += dt * (5 + ship.speed * 4);
 
+    // Sync Sector Visual Profile if sectorLevel updated
+    const incomingSectorLevel = ship.sectorLevel || 1;
+    if (incomingSectorLevel !== this.currentSectorLevel) {
+      this.updateSectorProfile(incomingSectorLevel, false);
+    }
+
     if (this.shieldHitTimer > 0) {
       this.shieldHitTimer = Math.max(0, this.shieldHitTimer - dt * 2.2);
     }
@@ -845,6 +1078,9 @@ export class SpaceRenderer {
     // 7. Science Scanner Wave
     this.renderScannerWave(ctx, w, h, dt);
 
+    // 7b. Tactical Radar Sweep & Active Sensor Ping Animation
+    this.renderRadarSweep(ctx, w, h, dt, now);
+
     // 8. Player Ship Rendering (The StarshipNSV Vanguard)
     this.renderStarship(ctx, w, h, dt, ship, now);
 
@@ -869,37 +1105,46 @@ export class SpaceRenderer {
     now: number,
     ship: ShipState
   ) {
-    // Deep obsidian space backdrop with radial gradient
+    const profile = this.currentVisualProfile;
+    const [c0, c1, c2] = profile.spaceGradients;
+
+    // Deep obsidian space backdrop with radial gradient themed by sector
     const bg = ctx.createRadialGradient(w * 0.5, h * 0.5, 30, w * 0.5, h * 0.5, Math.max(w, h));
-    bg.addColorStop(0, '#0a0e1c');
-    bg.addColorStop(0.5, '#050710');
-    bg.addColorStop(1, '#020307');
+    bg.addColorStop(0, c0);
+    bg.addColorStop(0.5, c1);
+    bg.addColorStop(1, c2);
     ctx.fillStyle = bg;
     ctx.fillRect(-60, -60, w + 120, h + 120);
 
-    // Multi-lobe procedural cosmic nebula clouds
-    // Lobe A: Deep Cyan & Sapphire
-    const nA = ctx.createRadialGradient(w * 0.28, h * 0.3, 10, w * 0.28, h * 0.3, w * 0.45);
-    nA.addColorStop(0, 'rgba(14, 165, 233, 0.08)');
-    nA.addColorStop(0.5, 'rgba(99, 102, 241, 0.04)');
+    // Multi-lobe procedural cosmic nebula clouds responsive to sector palette and subtle parallax
+    const nAData = profile.nebulaLobeA;
+    const nAX = w * nAData.pos[0] - this.currentOffsetX * 0.12;
+    const nAY = h * nAData.pos[1] - this.currentOffsetY * 0.1;
+    const nARadius = w * nAData.radius;
+    const nA = ctx.createRadialGradient(nAX, nAY, 10, nAX, nAY, nARadius);
+    nA.addColorStop(0, nAData.color0);
+    nA.addColorStop(0.5, nAData.color1);
     nA.addColorStop(1, 'rgba(0, 0, 0, 0)');
     ctx.fillStyle = nA;
     ctx.fillRect(0, 0, w, h);
 
-    // Lobe B: Ethereal Magenta & Cosmic Violet
-    const nB = ctx.createRadialGradient(w * 0.72, h * 0.65, 10, w * 0.72, h * 0.65, w * 0.4);
-    nB.addColorStop(0, 'rgba(217, 70, 239, 0.06)');
-    nB.addColorStop(0.6, 'rgba(147, 51, 234, 0.02)');
+    const nBData = profile.nebulaLobeB;
+    const nBX = w * nBData.pos[0] - this.currentOffsetX * 0.08;
+    const nBY = h * nBData.pos[1] - this.currentOffsetY * 0.07;
+    const nBRadius = w * nBData.radius;
+    const nB = ctx.createRadialGradient(nBX, nBY, 10, nBX, nBY, nBRadius);
+    nB.addColorStop(0, nBData.color0);
+    nB.addColorStop(0.6, nBData.color1);
     nB.addColorStop(1, 'rgba(0, 0, 0, 0)');
     ctx.fillStyle = nB;
     ctx.fillRect(0, 0, w, h);
 
-    // Render distant ringed gas giant
+    // Render distant celestial body (planet, moon, or singularity)
     if (this.planet) {
       const p = this.planet;
-      // Parallax scroll with ship distance
+      // Parallax scroll with ship distance and lateral flight banking
       const planetY = ((p.y + ship.distance * 8) % (h + p.radius * 4)) - p.radius * 2;
-      const planetX = p.x;
+      const planetX = p.x - this.currentOffsetX * 0.15;
 
       ctx.save();
       ctx.translate(planetX, planetY);
@@ -913,16 +1158,16 @@ export class SpaceRenderer {
         ctx.arc(0, 0, p.radius * 1.85, Math.PI, Math.PI * 2);
         ctx.lineWidth = p.radius * 0.45;
         const ringGrad = ctx.createLinearGradient(-p.radius * 2, 0, p.radius * 2, 0);
-        ringGrad.addColorStop(0, 'rgba(186, 230, 253, 0.02)');
-        ringGrad.addColorStop(0.3, 'rgba(186, 230, 253, 0.22)');
-        ringGrad.addColorStop(0.6, 'rgba(125, 211, 252, 0.12)');
-        ringGrad.addColorStop(1, 'rgba(186, 230, 253, 0.02)');
+        ringGrad.addColorStop(0, `hsla(${p.hue}, 80%, 75%, 0.02)`);
+        ringGrad.addColorStop(0.3, `hsla(${p.hue}, 80%, 75%, 0.22)`);
+        ringGrad.addColorStop(0.6, `hsla(${p.hue}, 85%, 65%, 0.12)`);
+        ringGrad.addColorStop(1, `hsla(${p.hue}, 80%, 75%, 0.02)`);
         ctx.strokeStyle = ringGrad;
         ctx.stroke();
         ctx.restore();
       }
 
-      // Planet Sphere with spherical shadow terminator
+      // Planet Sphere with spherical shadow terminator themed by hue
       const pGrad = ctx.createRadialGradient(
         -p.radius * 0.35,
         -p.radius * 0.35,
@@ -931,9 +1176,9 @@ export class SpaceRenderer {
         0,
         p.radius
       );
-      pGrad.addColorStop(0, '#38bdf8');
-      pGrad.addColorStop(0.4, '#0369a1');
-      pGrad.addColorStop(0.8, '#082f49');
+      pGrad.addColorStop(0, `hsl(${p.hue}, 85%, 65%)`);
+      pGrad.addColorStop(0.4, `hsl(${p.hue}, 80%, 35%)`);
+      pGrad.addColorStop(0.8, `hsl(${p.hue}, 80%, 15%)`);
       pGrad.addColorStop(1, '#020617');
 
       ctx.beginPath();
@@ -944,7 +1189,7 @@ export class SpaceRenderer {
       // Atmospheric limb glow
       ctx.beginPath();
       ctx.arc(0, 0, p.radius, 0, Math.PI * 2);
-      ctx.strokeStyle = 'rgba(56, 189, 248, 0.35)';
+      ctx.strokeStyle = `hsla(${p.hue}, 85%, 60%, 0.4)`;
       ctx.lineWidth = 2.5;
       ctx.stroke();
 
@@ -956,10 +1201,10 @@ export class SpaceRenderer {
         ctx.arc(0, 0, p.radius * 1.85, 0, Math.PI);
         ctx.lineWidth = p.radius * 0.45;
         const ringGradF = ctx.createLinearGradient(-p.radius * 2, 0, p.radius * 2, 0);
-        ringGradF.addColorStop(0, 'rgba(186, 230, 253, 0.02)');
-        ringGradF.addColorStop(0.3, 'rgba(186, 230, 253, 0.35)');
-        ringGradF.addColorStop(0.6, 'rgba(125, 211, 252, 0.18)');
-        ringGradF.addColorStop(1, 'rgba(186, 230, 253, 0.02)');
+        ringGradF.addColorStop(0, `hsla(${p.hue}, 80%, 75%, 0.02)`);
+        ringGradF.addColorStop(0.3, `hsla(${p.hue}, 80%, 75%, 0.35)`);
+        ringGradF.addColorStop(0.6, `hsla(${p.hue}, 85%, 65%, 0.18)`);
+        ringGradF.addColorStop(1, `hsla(${p.hue}, 80%, 75%, 0.02)`);
         ctx.strokeStyle = ringGradF;
         ctx.stroke();
         ctx.restore();
@@ -977,74 +1222,124 @@ export class SpaceRenderer {
     ship: ShipState,
     now: number
   ) {
-    const baseSpeed = 24;
-    const speedMultiplier = ship.speed === 0 ? 0.3 : ship.speed * 1.6;
-    const velocity = baseSpeed * (1 + speedMultiplier * 2.8);
+    // Dynamic Speed Multipliers:
+    // Speed 0 = calm drifting, Speed 1..5 = escalating warp acceleration
+    const baseSpeed = 26;
+    const speedRatio = ship.speed === 0 ? 0.35 : 0.8 + ship.speed * 1.45;
+    const velocity = baseSpeed * (1 + speedRatio * 2.5);
 
-    // 1. Background parallax stars
+    // Parallax Lateral Drift Vector based on ship steering and bank angle
+    const lateralShiftFactor = this.currentOffsetX * 0.45;
+    const bankShiftFactor = Math.sin(this.shipBankAngle) * 35;
+    const totalLateralShift = lateralShiftFactor + bankShiftFactor;
+
+    // Accumulate smooth parallax offset
+    this.lateralParallaxOffset += totalLateralShift * dt;
+    this.verticalParallaxOffset += velocity * dt;
+
+    // 1. Dynamic Parallax Star Layers (Distant, Midground, Foreground)
     for (const star of this.stars) {
-      star.y += velocity * star.speedMultiplier * dt;
-      if (star.y > h + 10) {
-        star.y = -10;
+      // 3-Tier Layer Weighting:
+      // Layer 0 (distant): 0.25x speed, minimal parallax shift
+      // Layer 1 (midground): 0.75x speed, moderate parallax shift
+      // Layer 2 (foreground): 1.6x speed, dramatic parallax shift
+      const layerWeight = star.layer === 0 ? 0.35 : star.layer === 1 ? 0.85 : 1.7;
+      const parallaxDriftX = totalLateralShift * layerWeight * dt * -0.65;
+
+      // Update positions
+      star.y += velocity * star.speedMultiplier * layerWeight * dt;
+      star.x += parallaxDriftX;
+
+      // Wrap-around bounds with margins
+      if (star.y > h + 20) {
+        star.y = -15;
         star.x = Math.random() * w;
+      } else if (star.y < -20) {
+        star.y = h + 15;
+        star.x = Math.random() * w;
+      }
+
+      if (star.x > w + 20) {
+        star.x = -15;
+      } else if (star.x < -20) {
+        star.x = w + 15;
       }
 
       // Dynamic twinkle
       const twinkle = Math.sin(now * 0.001 * star.twinkleSpeed + star.twinkleOffset) * 0.25;
-      const alpha = Math.max(0.15, Math.min(1, star.baseAlpha + twinkle));
+      const alpha = Math.max(0.18, Math.min(1, star.baseAlpha + twinkle));
 
       ctx.save();
       ctx.globalAlpha = alpha;
 
-      // Warp stretch lines if high speed
+      // Dynamic Warp Streaks when traveling at high speed
       if (ship.speed >= 3) {
-        const streakLen = Math.min(45, ship.speed * 6 * star.speedMultiplier);
+        // Foreground stars stretch significantly longer to amplify 3D depth
+        const streakLen = Math.min(55, (ship.speed * 6.5 + star.layer * 4.5) * star.speedMultiplier);
+        // Warp angle shifts slightly with lateral bank
+        const skewX = -Math.sin(this.shipBankAngle * 0.4) * (streakLen * 0.3);
+
         ctx.strokeStyle = star.color;
-        ctx.lineWidth = star.size * 0.75;
+        ctx.lineWidth = star.size * (star.layer === 2 ? 0.95 : 0.7);
         ctx.lineCap = 'round';
         ctx.beginPath();
         ctx.moveTo(star.x, star.y);
-        ctx.lineTo(star.x, star.y - streakLen);
+        ctx.lineTo(star.x + skewX, star.y - streakLen);
         ctx.stroke();
+
+        // Warp particle head glint
+        if (star.layer === 2) {
+          ctx.fillStyle = '#ffffff';
+          ctx.beginPath();
+          ctx.arc(star.x, star.y, star.size * 0.9, 0, Math.PI * 2);
+          ctx.fill();
+        }
       } else {
         ctx.fillStyle = star.color;
         ctx.beginPath();
         ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
         ctx.fill();
 
-        // Star corona glint for brighter stars
-        if (star.size > 1.8) {
+        // Star corona glint for brighter / foreground stars
+        if (star.size > 1.7) {
           ctx.strokeStyle = star.color;
-          ctx.globalAlpha = alpha * 0.4;
-          ctx.lineWidth = 0.6;
+          ctx.globalAlpha = alpha * 0.45;
+          ctx.lineWidth = 0.65;
           ctx.beginPath();
-          ctx.moveTo(star.x - star.size * 2, star.y);
-          ctx.lineTo(star.x + star.size * 2, star.y);
-          ctx.moveTo(star.x, star.y - star.size * 2);
-          ctx.lineTo(star.x, star.y + star.size * 2);
+          ctx.moveTo(star.x - star.size * 2.2, star.y);
+          ctx.lineTo(star.x + star.size * 2.2, star.y);
+          ctx.moveTo(star.x, star.y - star.size * 2.2);
+          ctx.lineTo(star.x, star.y + star.size * 2.2);
           ctx.stroke();
         }
       }
       ctx.restore();
     }
 
-    // 2. High-speed Cosmic Dust
+    // 2. High-speed Cosmic Dust with Sector Themed Shading & Extreme Parallax
+    const dustColor = this.currentVisualProfile.dustColor;
     for (const dust of this.cosmicDust) {
-      dust.y += velocity * dust.speed * 1.5 * dt;
-      if (dust.y > h + 20) {
-        dust.y = -20;
+      dust.y += velocity * dust.speed * 1.6 * dt;
+      dust.x += totalLateralShift * dust.speed * dt * -0.85;
+
+      if (dust.y > h + 25) {
+        dust.y = -25;
         dust.x = Math.random() * w;
       }
+      if (dust.x > w + 25) dust.x = -20;
+      else if (dust.x < -25) dust.x = w + 20;
 
       ctx.save();
-      ctx.globalAlpha = dust.alpha * (ship.speed > 0 ? 1 : 0.4);
-      const dustLen = Math.max(2, ship.speed * 8 * dust.speed);
-      ctx.strokeStyle = '#bae6fd';
+      ctx.globalAlpha = dust.alpha * (ship.speed > 0 ? 1 : 0.45);
+      const dustLen = Math.max(3, ship.speed * 9 * dust.speed);
+      const skewDustX = -Math.sin(this.shipBankAngle * 0.5) * (dustLen * 0.35);
+
+      ctx.strokeStyle = dustColor;
       ctx.lineWidth = dust.size;
       ctx.lineCap = 'round';
       ctx.beginPath();
       ctx.moveTo(dust.x, dust.y);
-      ctx.lineTo(dust.x, dust.y - dustLen);
+      ctx.lineTo(dust.x + skewDustX, dust.y - dustLen);
       ctx.stroke();
       ctx.restore();
     }
@@ -1058,14 +1353,15 @@ export class SpaceRenderer {
     ship: ShipState
   ) {
     ctx.save();
-    ctx.strokeStyle = 'rgba(56, 189, 248, 0.05)';
+    ctx.strokeStyle = this.currentVisualProfile.gridColor || 'rgba(56, 189, 248, 0.08)';
     ctx.lineWidth = 1;
 
-    // Moving vertical & horizontal vector grid lines
+    // Moving vertical & horizontal vector grid lines with lateral parallax and speed flow
     const gridSize = 48;
     const gridOffsetY = (now * 0.04 * (ship.speed + 1)) % gridSize;
+    const gridOffsetX = ((-this.currentOffsetX * 0.25) % gridSize + gridSize) % gridSize;
 
-    for (let x = 0; x < w; x += gridSize) {
+    for (let x = gridOffsetX; x < w; x += gridSize) {
       ctx.beginPath();
       ctx.moveTo(x, 0);
       ctx.lineTo(x, h);
@@ -1338,6 +1634,239 @@ export class SpaceRenderer {
       this.isScanning = false;
       this.scanWaveRadius = 0;
     }
+  }
+
+  private renderRadarSweep(
+    ctx: CanvasRenderingContext2D,
+    w: number,
+    h: number,
+    dt: number,
+    now: number
+  ) {
+    if (!this.isRadarSweeping) return;
+
+    this.radarSweepElapsed += dt;
+    if (this.radarSweepElapsed >= this.radarSweepDuration) {
+      this.isRadarSweeping = false;
+      this.radarSweepElapsed = 0;
+      return;
+    }
+
+    const progress = Math.min(1, this.radarSweepElapsed / this.radarSweepDuration);
+
+    // Alpha fade envelope: smooth fade in at start, smooth fade out at end
+    const alphaIn = Math.min(1, progress / 0.12);
+    const alphaOut = Math.min(1, (1 - progress) / 0.22);
+    const globalAlpha = Math.min(alphaIn, alphaOut);
+    if (globalAlpha <= 0) return;
+
+    // Origin centered on starship forward sensor emitter
+    const originX = this.shipVisualX || w / 2;
+    const originY = (this.shipVisualY || h * 0.72) - 15;
+    const maxRadius = Math.hypot(w, h);
+
+    // Radar rotational sweep: 2 full 360° sweeps across the duration
+    // Starting straight forward (-PI / 2)
+    const sweepAngle = -Math.PI / 2 + progress * Math.PI * 4;
+    this.radarSweepAngle = sweepAngle;
+
+    ctx.save();
+
+    // 1. Concentric Tactical Radar Range Rings
+    const ringRadii = [
+      Math.min(w, h) * 0.16,
+      Math.min(w, h) * 0.32,
+      Math.min(w, h) * 0.52,
+      Math.min(w, h) * 0.76,
+    ];
+    const rangeLabels = ['10 KM', '25 KM', '50 KM', '75 KM'];
+
+    for (let rIdx = 0; rIdx < ringRadii.length; rIdx++) {
+      const radius = ringRadii[rIdx];
+      const ringAlpha = (0.28 - rIdx * 0.04) * globalAlpha;
+
+      ctx.beginPath();
+      ctx.arc(originX, originY, radius, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(6, 182, 212, ${ringAlpha})`;
+      ctx.lineWidth = 1;
+      ctx.setLineDash([6, 6]);
+      ctx.stroke();
+
+      // Range distance label
+      ctx.font = '9px "JetBrains Mono", monospace';
+      ctx.fillStyle = `rgba(56, 189, 248, ${ringAlpha * 1.4})`;
+      ctx.fillText(rangeLabels[rIdx], originX + 6, originY - radius + 11);
+    }
+
+    // 2. Cardinal Crosshairs & Azimuth Ticks
+    const outerRadius = ringRadii[ringRadii.length - 1];
+    ctx.setLineDash([]);
+    ctx.strokeStyle = `rgba(6, 182, 212, ${0.2 * globalAlpha})`;
+    ctx.lineWidth = 1;
+
+    // Forward vector line
+    ctx.beginPath();
+    ctx.moveTo(originX, originY - outerRadius - 15);
+    ctx.lineTo(originX, originY + outerRadius * 0.4);
+    ctx.stroke();
+
+    // Horizontal axis line
+    ctx.beginPath();
+    ctx.moveTo(originX - outerRadius, originY);
+    ctx.lineTo(originX + outerRadius, originY);
+    ctx.stroke();
+
+    // Azimuth degree tick marks every 30 degrees around outer ring
+    for (let deg = 0; deg < 360; deg += 30) {
+      const rad = (deg * Math.PI) / 180 - Math.PI / 2;
+      const innerX = originX + Math.cos(rad) * (outerRadius - 6);
+      const innerY = originY + Math.sin(rad) * (outerRadius - 6);
+      const outerX = originX + Math.cos(rad) * (outerRadius + 4);
+      const outerY = originY + Math.sin(rad) * (outerRadius + 4);
+
+      ctx.beginPath();
+      ctx.moveTo(innerX, innerY);
+      ctx.lineTo(outerX, outerY);
+      ctx.stroke();
+
+      if (deg % 90 === 0) {
+        ctx.font = '8px "JetBrains Mono", monospace';
+        ctx.fillStyle = `rgba(56, 189, 248, ${0.35 * globalAlpha})`;
+        const lblX = originX + Math.cos(rad) * (outerRadius + 14);
+        const lblY = originY + Math.sin(rad) * (outerRadius + 14);
+        const label = deg === 0 ? '000°' : deg === 90 ? '090°' : deg === 180 ? '180°' : '270°';
+        ctx.fillText(label, lblX - 10, lblY + 3);
+      }
+    }
+
+    // 3. High-Speed Expanding Sensor Ping Shockwaves
+    const waveCount = 2;
+    for (let wi = 0; wi < waveCount; wi++) {
+      const wavePhase = ((this.radarSweepElapsed * 1.6 + wi * 0.8) % 1.6) / 1.6;
+      const waveRadius = wavePhase * maxRadius;
+      const waveAlpha = (1 - wavePhase) * 0.45 * globalAlpha;
+
+      if (waveRadius > 10) {
+        ctx.beginPath();
+        ctx.arc(originX, originY, waveRadius, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(56, 189, 248, ${waveAlpha})`;
+        ctx.lineWidth = 1.8;
+        ctx.stroke();
+      }
+    }
+
+    // 4. Phosphor Persistence Fan (Trailing Radar Sweep Cone)
+    // Fades smoothly from the leading edge back ~57 degrees
+    const trailSpan = Math.PI * 0.32;
+    const sliceCount = 14;
+
+    for (let s = 0; s < sliceCount; s++) {
+      const startAngle = sweepAngle - ((s + 1) / sliceCount) * trailSpan;
+      const endAngle = sweepAngle - (s / sliceCount) * trailSpan;
+      const sliceT = 1 - s / sliceCount; // 1 at leading edge, 0 at tail
+      const sliceAlpha = Math.pow(sliceT, 1.8) * 0.18 * globalAlpha;
+
+      ctx.beginPath();
+      ctx.moveTo(originX, originY);
+      ctx.arc(originX, originY, maxRadius, startAngle, endAngle);
+      ctx.closePath();
+      ctx.fillStyle = `rgba(6, 182, 212, ${sliceAlpha})`;
+      ctx.fill();
+    }
+
+    // 5. Leading Radar Sweep Vector Beam
+    const beamEndX = originX + Math.cos(sweepAngle) * maxRadius;
+    const beamEndY = originY + Math.sin(sweepAngle) * maxRadius;
+
+    ctx.save();
+    ctx.shadowColor = '#38bdf8';
+    ctx.shadowBlur = 10;
+    ctx.beginPath();
+    ctx.moveTo(originX, originY);
+    ctx.lineTo(beamEndX, beamEndY);
+    ctx.strokeStyle = `rgba(186, 230, 253, ${0.9 * globalAlpha})`;
+    ctx.lineWidth = 2.2;
+    ctx.stroke();
+    ctx.restore();
+
+    // Sensor emitter center pulse
+    ctx.beginPath();
+    ctx.arc(originX, originY, 4.5, 0, Math.PI * 2);
+    ctx.fillStyle = '#38bdf8';
+    ctx.shadowColor = '#06b6d4';
+    ctx.shadowBlur = 8;
+    ctx.fill();
+
+    // 6. Target Contact Acquisition & Hazard Ping Blips
+    const targetPos = this.radarTargetPingPos || (this.hazards.length > 0 ? { x: this.hazards[0].x, y: this.hazards[0].y } : null);
+
+    if (targetPos) {
+      // Trigger contact acquisition callback once sweep crosses the contact
+      if (progress > 0.22 && !this.radarContactAcquired) {
+        this.radarContactAcquired = true;
+        if (this.onContactPingAcquired) {
+          this.onContactPingAcquired();
+        }
+      }
+
+      // Render Contact Blip & Ping Rings
+      if (this.radarContactAcquired) {
+        // Expanding contact sonar ripple
+        const contactWave = ((this.radarSweepElapsed * 2) % 1) * 35;
+        ctx.beginPath();
+        ctx.arc(targetPos.x, targetPos.y, contactWave, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(244, 63, 94, ${(1 - contactWave / 35) * 0.8 * globalAlpha})`;
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+
+        // Contact diamond reticle
+        const retSize = 14;
+        ctx.save();
+        ctx.translate(targetPos.x, targetPos.y);
+        ctx.rotate(now * 0.001);
+        ctx.strokeStyle = this.radarPingColor;
+        ctx.lineWidth = 1.8;
+        ctx.shadowColor = this.radarPingColor;
+        ctx.shadowBlur = 12;
+        ctx.strokeRect(-retSize / 2, -retSize / 2, retSize, retSize);
+        ctx.restore();
+
+        // Center contact core
+        ctx.beginPath();
+        ctx.arc(targetPos.x, targetPos.y, 4, 0, Math.PI * 2);
+        ctx.fillStyle = this.radarPingColor;
+        ctx.shadowColor = this.radarPingColor;
+        ctx.shadowBlur = 14;
+        ctx.fill();
+
+        // Contact Telemetry Tag
+        ctx.font = 'bold 9px "JetBrains Mono", monospace';
+        ctx.fillStyle = this.radarPingColor;
+        ctx.fillText('▲ ACTIVE PING ACQUIRED', targetPos.x + 14, targetPos.y - 6);
+      }
+    }
+
+    // Secondary Hazards Phosphor Blips
+    for (const h of this.hazards) {
+      if (targetPos && h.x === targetPos.x && h.y === targetPos.y) continue;
+      const hAngle = Math.atan2(h.y - originY, h.x - originX);
+      const normHAngle = (hAngle + Math.PI * 2) % (Math.PI * 2);
+      const normSweepAngle = (sweepAngle + Math.PI * 2) % (Math.PI * 2);
+      const diff = (normSweepAngle - normHAngle + Math.PI * 2) % (Math.PI * 2);
+
+      // If swept within last 90 degrees, show decaying phosphor blip
+      if (diff < Math.PI * 0.5) {
+        const blipAlpha = (1 - diff / (Math.PI * 0.5)) * 0.7 * globalAlpha;
+        ctx.beginPath();
+        ctx.arc(h.x, h.y, 3.5, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(244, 63, 94, ${blipAlpha})`;
+        ctx.shadowColor = '#f43f5e';
+        ctx.shadowBlur = 8;
+        ctx.fill();
+      }
+    }
+
+    ctx.restore();
   }
 
   private renderStarship(

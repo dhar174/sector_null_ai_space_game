@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { ShipState, CrewStatus, Encounter, IdleTopic } from '../types';
-import { Shield, Battery, Gauge, Activity, AlertOctagon, Radio, Info, MessageSquare } from 'lucide-react';
+import { Shield, Battery, Gauge, Activity, AlertOctagon, Radio, Info, MessageSquare, Compass, Maximize2 } from 'lucide-react';
 import { JaxPortrait, ElaraPortrait, OfficerDossierModal, CharacterType } from './CrewPortraits';
+import { ShipSchematics } from './ShipSchematics';
 
 interface ShipStatusProps {
   ship: ShipState;
@@ -11,6 +12,7 @@ interface ShipStatusProps {
   onSendCommand?: (command: string) => void;
   activeIdleTopic?: IdleTopic | null;
   onSelectIdleTopic?: (topic: IdleTopic) => void;
+  onOpenFullSchematics?: () => void;
 }
 
 export const ShipStatus: React.FC<ShipStatusProps> = ({
@@ -21,8 +23,10 @@ export const ShipStatus: React.FC<ShipStatusProps> = ({
   onSendCommand,
   activeIdleTopic,
   onSelectIdleTopic,
+  onOpenFullSchematics,
 }) => {
   const [internalInspect, setInternalInspect] = useState<CharacterType | null>(null);
+  const [activeTab, setActiveTab] = useState<'telemetry' | 'schematics'>('telemetry');
 
   const handleOpenDossier = (officer: CharacterType) => {
     if (onInspectOfficer) {
@@ -58,7 +62,7 @@ export const ShipStatus: React.FC<ShipStatusProps> = ({
       id="ship-status-panel"
       className="flex flex-col h-full bg-[#090d16] border border-cyan-900/40 rounded-xl p-4 shadow-xl overflow-y-auto space-y-4 font-sans"
     >
-      {/* Header telemetry tag */}
+      {/* Header telemetry tag & Tab switcher */}
       <div className="flex items-center justify-between border-b border-cyan-900/40 pb-2.5">
         <div className="flex items-center gap-2">
           <Activity className="w-4 h-4 text-cyan-400 animate-pulse" />
@@ -66,13 +70,59 @@ export const ShipStatus: React.FC<ShipStatusProps> = ({
             Ship Telemetry & Crew
           </h2>
         </div>
-        <span className="text-[10px] font-terminal px-2 py-0.5 rounded bg-cyan-950/70 border border-cyan-700/40 text-cyan-300">
-          U.S.S. AEGIS-IV
-        </span>
+
+        <div className="flex items-center gap-1.5">
+          {/* Tab switcher: TELEMETRY vs SCHEMATICS 2D */}
+          <div className="flex items-center bg-slate-950 p-0.5 rounded-lg border border-slate-800">
+            <button
+              onClick={() => setActiveTab('telemetry')}
+              className={`px-2 py-0.5 rounded text-[10px] font-terminal transition-colors cursor-pointer ${
+                activeTab === 'telemetry'
+                  ? 'bg-cyan-500/25 border border-cyan-500/60 text-cyan-200 font-bold'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              TELEMETRY
+            </button>
+            <button
+              onClick={() => setActiveTab('schematics')}
+              className={`px-2 py-0.5 rounded text-[10px] font-terminal transition-colors cursor-pointer flex items-center gap-1 ${
+                activeTab === 'schematics'
+                  ? 'bg-cyan-500/25 border border-cyan-500/60 text-cyan-200 font-bold'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Compass className="w-3 h-3 text-cyan-400" />
+              <span>SCHEMATICS</span>
+            </button>
+          </div>
+
+          {onOpenFullSchematics && (
+            <button
+              onClick={onOpenFullSchematics}
+              className="p-1 rounded bg-slate-900 border border-slate-800 hover:border-cyan-600 text-slate-400 hover:text-cyan-300 transition-colors"
+              title="Expand Full Schematics Overlay"
+            >
+              <Maximize2 className="w-3 h-3" />
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* Primary Resources Grid: Hull & Energy */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      {activeTab === 'schematics' ? (
+        <div className="flex-1 min-h-0 flex flex-col pt-1">
+          <ShipSchematics
+            ship={ship}
+            crew={crew}
+            encounter={encounter}
+            mode="compact"
+            onSendCommand={onSendCommand}
+          />
+        </div>
+      ) : (
+        <>
+          {/* Primary Resources Grid: Hull & Energy */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {/* HULL */}
         <div className="bg-slate-950/70 border border-slate-800/80 rounded-lg p-3 relative overflow-hidden">
           <div className="flex items-center justify-between mb-1.5">
@@ -227,8 +277,12 @@ export const ShipStatus: React.FC<ShipStatusProps> = ({
           <span className="text-xs font-terminal text-slate-400 uppercase tracking-wider block">
             ACTIVE BRIDGE OFFICERS (EXPRESSIVE AI CREW)
           </span>
-          <span className="text-[10px] font-terminal text-cyan-400/80 flex items-center gap-1">
-            <Info className="w-3 h-3" /> CLICK PORTRAIT TO INSPECT
+          <span
+            className="text-[10px] font-terminal text-cyan-400/90 flex items-center gap-1.5"
+            title="Portrait halo and borders dynamically intensify with emotional stress levels"
+          >
+            <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
+            <span>STRESS GLOW ACTIVE</span>
           </span>
         </div>
 
@@ -236,7 +290,11 @@ export const ShipStatus: React.FC<ShipStatusProps> = ({
         <div
           onClick={() => handleOpenDossier('Jax')}
           className={`bg-slate-950/80 border rounded-xl p-2.5 flex items-start gap-3 transition-all cursor-pointer group shadow-lg ${
-            activeIdleTopic?.officer === 'Jax'
+            crew.jaxStress > 70
+              ? 'border-rose-500/70 shadow-[0_0_18px_rgba(244,63,94,0.25)] ring-1 ring-rose-500/40'
+              : crew.jaxStress > 35
+              ? 'border-amber-500/60 shadow-[0_0_12px_rgba(245,158,11,0.2)]'
+              : activeIdleTopic?.officer === 'Jax'
               ? 'border-amber-500/60 shadow-[0_0_12px_rgba(245,158,11,0.2)] ring-1 ring-amber-500/30'
               : 'border-amber-500/30 hover:border-amber-400/60'
           }`}
@@ -317,7 +375,13 @@ export const ShipStatus: React.FC<ShipStatusProps> = ({
         <div
           onClick={() => handleOpenDossier('Elara')}
           className={`bg-slate-950/80 border rounded-xl p-2.5 flex items-start gap-3 transition-all cursor-pointer group shadow-lg ${
-            activeIdleTopic?.officer === 'Elara'
+            (crew.elaraStress ?? 12) > 65
+              ? 'border-rose-500/70 shadow-[0_0_18px_rgba(244,63,94,0.25)] ring-1 ring-rose-500/40'
+              : (crew.elaraStress ?? 12) > 35
+              ? 'border-amber-500/50 shadow-[0_0_10px_rgba(245,158,11,0.15)]'
+              : crew.elaraStatus === 'Fascinated'
+              ? 'border-purple-500/50 shadow-[0_0_12px_rgba(168,85,247,0.2)]'
+              : activeIdleTopic?.officer === 'Elara'
               ? 'border-cyan-500/60 shadow-[0_0_12px_rgba(6,182,212,0.2)] ring-1 ring-cyan-500/30'
               : 'border-cyan-500/30 hover:border-cyan-400/60'
           }`}
@@ -411,8 +475,10 @@ export const ShipStatus: React.FC<ShipStatusProps> = ({
           </div>
         </div>
       </div>
+    </>
+  )}
 
-      {/* Internal Officer Dossier Modal if triggered directly */}
+  {/* Internal Officer Dossier Modal if triggered directly */}
       {internalInspect && (
         <OfficerDossierModal
           isOpen={true}
