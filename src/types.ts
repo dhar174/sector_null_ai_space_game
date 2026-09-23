@@ -97,3 +97,39 @@ export interface DisplayProperties {
   dynamicBanking: boolean;
   bloomEffects: boolean;
 }
+
+export type ThreatLevel = 'NOMINAL' | 'CAUTION' | 'HAZARD' | 'CRITICAL';
+export type TacticalTargetType = 'hazard' | 'scan_target' | 'waypoint' | 'celestial';
+
+export interface TacticalTargetDetails {
+  composition?: string;
+  hazardVector?: string;
+  energySignature?: string;
+  salvageValue?: string;
+  recommendedAction?: string;
+  threatClass?: string;
+  radiationLevel?: string;
+  structuralIntegrity?: string;
+}
+
+export interface TacticalTarget {
+  id: string;
+  type: TacticalTargetType;
+  label: string;
+  sublabel: string;
+  category: string;
+  x: number;
+  y: number;
+  radius: number;
+  threatLevel: ThreatLevel;
+  threatColor: string;
+  distanceKm: number;
+  relativeVelocity?: number;
+  scanned: boolean;
+  scanProgress?: number;
+  details?: TacticalTargetDetails;
+  isOffScreen?: boolean;
+  edgeX?: number;
+  edgeY?: number;
+  edgeAngle?: number;
+}

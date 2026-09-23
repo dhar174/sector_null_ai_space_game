@@ -1,4 +1,14 @@
-import { ShipState, Encounter, DisplayProperties, CameraViewMode, VisualSpectrum } from '../types';
+import {
+  ShipState,
+  Encounter,
+  DisplayProperties,
+  CameraViewMode,
+  VisualSpectrum,
+  TacticalTarget,
+  ThreatLevel,
+  TacticalTargetType,
+  TacticalTargetDetails,
+} from '../types';
 
 interface Star {
   x: number;
@@ -27,6 +37,7 @@ interface Particle {
 }
 
 interface HazardObject {
+  id: string;
   x: number;
   y: number;
   vx: number;
@@ -38,6 +49,14 @@ interface HazardObject {
   color: string;
   type: string;
   pulse?: number;
+  isScanTarget?: boolean;
+  hazardLabel?: string;
+  hazardSublabel?: string;
+  category?: string;
+  threatLevel?: ThreatLevel;
+  scanned?: boolean;
+  scanProgress?: number;
+  details?: TacticalTargetDetails;
 }
 
 interface CelestialPlanet {
@@ -250,21 +269,56 @@ export class SpaceRenderer {
           for (let p = 0; p < numVerts; p++) {
             points.push(0.65 + Math.random() * 0.65);
           }
+
+          const isScanTarget = i === 1; // Mark second asteroid as high-value scannable ore deposit
+          const isPrimaryCore = i === 0;
+
           this.hazards.push({
+            id: `ast-${i}`,
             x: Math.random() * (w * 0.85) + w * 0.075,
             y: Math.random() * (h * 0.5) - h * 0.25,
             vx: (Math.random() - 0.5) * 0.6,
             vy: Math.random() * 0.4 + 0.35,
-            radius: Math.random() * 26 + 18,
+            radius: isPrimaryCore ? 34 : Math.random() * 24 + 18,
             rotation: Math.random() * Math.PI * 2,
             rotSpeed: (Math.random() - 0.5) * 0.025,
             points,
-            color: '#64748b',
+            color: isScanTarget ? '#38bdf8' : '#64748b',
             type: 'asteroid_field',
+            isScanTarget,
+            hazardLabel: isPrimaryCore
+              ? 'DENSE ASTEROID CORE'
+              : isScanTarget
+              ? 'PALLASITE ORE DEPOSIT'
+              : `ASTEROID FRAGMENT #${i + 1}`,
+            hazardSublabel: isPrimaryCore
+              ? 'COLLISION VECTOR'
+              : isScanTarget
+              ? 'TITANIUM/SILICATE MATRIX'
+              : 'TUMBLING SILICATE',
+            category: isScanTarget ? 'MINERAL CONCENTRATION' : 'ASTEROID CLUSTER',
+            threatLevel: isPrimaryCore ? 'CRITICAL' : isScanTarget ? 'CAUTION' : 'HAZARD',
+            scanned: encounter.scanned || false,
+            details: isScanTarget
+              ? {
+                  composition: '82% High-Density Titanium, Ferrosilicon',
+                  salvageValue: 'High mineral harvesting yield',
+                  hazardVector: 'Low relative angular velocity',
+                  recommendedAction: 'Engage mining pulse or sensor probe to catalog mineral coordinates',
+                  threatClass: 'Class II Celestial Mineral',
+                }
+              : {
+                  composition: 'Porous Iron-Silicate & Basalt',
+                  hazardVector: 'Direct bow kinetic collision threat',
+                  recommendedAction: 'Execute evasive yaw or boost forward deflector capacity',
+                  threatClass: isPrimaryCore ? 'Class IV Collision Hazard' : 'Class III Stray Debris',
+                },
           });
         }
       } else if (encounter.type === 'spatial_anomaly') {
+        // Core Singularity Event Horizon
         this.hazards.push({
+          id: 'anom-singularity',
           x: w * 0.5,
           y: h * 0.24,
           vx: 0,
@@ -275,51 +329,454 @@ export class SpaceRenderer {
           points: [],
           color: '#d946ef',
           type: 'spatial_anomaly',
+          isScanTarget: false,
+          hazardLabel: 'SINGULARITY EVENT HORIZON',
+          hazardSublabel: 'GRAVITATIONAL SHEAR - CLASS IV',
+          category: 'SPATIAL DISTORTION',
+          threatLevel: 'CRITICAL',
+          scanned: encounter.scanned || false,
+          details: {
+            composition: 'Collapsed Micro-Singularity Degenerate Matter',
+            radiationLevel: '380 mSv/h Hawking Radiation',
+            hazardVector: 'Extreme gravitational tidal gradient',
+            recommendedAction: 'Maintain clearance >= 25 km; do not engage warp drives',
+            threatClass: 'Class V Gravitational Hazard',
+          },
+        });
+
+        // Orbiting Tachyon Accretion Rift (High value scan target)
+        this.hazards.push({
+          id: 'anom-tachyon-rift',
+          x: w * 0.5 + 68,
+          y: h * 0.24 - 32,
+          vx: -0.05,
+          vy: 0.11,
+          radius: 28,
+          rotation: 0.4,
+          rotSpeed: -0.045,
+          points: [],
+          color: '#e879f9',
+          type: 'spatial_anomaly',
+          isScanTarget: true,
+          hazardLabel: 'TACHYON ACCRETION RIFT',
+          hazardSublabel: 'EXOTIC ENERGY RESONANCE',
+          category: 'EXOTIC FLUX NODE',
+          threatLevel: 'CAUTION',
+          scanned: encounter.scanned || false,
+          details: {
+            composition: 'Coherent Exotic Baryons & Dark Matter Condensate',
+            energySignature: 'Subspace Harmonic Frequency 412.8 THz',
+            salvageValue: 'Auxiliary capacitor recharge potential',
+            recommendedAction: 'Deploy directional sensor array to capture quantum telemetry',
+            threatClass: 'Class II Scientific Opportunity',
+          },
         });
       } else if (encounter.type === 'abandoned_vessel') {
+        // Derelict Main Hull & Cargo Bay
         this.hazards.push({
+          id: 'derelict-vessel',
           x: w * 0.52,
           y: h * 0.26,
           vx: 0.08,
           vy: 0.16,
-          radius: 42,
+          radius: 44,
           rotation: 0.25,
           rotSpeed: 0.006,
           points: [],
           color: '#94a3b8',
           type: 'abandoned_vessel',
+          isScanTarget: true,
+          hazardLabel: 'DERELICT CARGO USV-88',
+          hazardSublabel: 'CARGO BAY & DATA RECORDER',
+          category: 'DERELICT VESSEL',
+          threatLevel: 'NOMINAL',
+          scanned: encounter.scanned || false,
+          details: {
+            structuralIntegrity: '18% Remaining; Catastrophic Micro-fractures',
+            salvageValue: 'Intact Deuterium fuel cells & Flight Black Box',
+            composition: 'Reinforced Duranium-Titanium alloy',
+            recommendedAction: 'Lock scan brackets to triangulate cargo bay access hatches',
+            threatClass: 'Class I Derelict Salvage',
+          },
+        });
+
+        // Venting Core Plasma Breach
+        this.hazards.push({
+          id: 'derelict-leak',
+          x: w * 0.52 - 42,
+          y: h * 0.26 + 18,
+          vx: 0.04,
+          vy: 0.18,
+          radius: 26,
+          rotation: 0,
+          rotSpeed: 0.015,
+          points: [],
+          color: '#f59e0b',
+          type: 'abandoned_vessel',
+          isScanTarget: false,
+          hazardLabel: 'UNCONTAINED DRIVE CORE',
+          hazardSublabel: 'THERMAL BLEED & PLASMA JET',
+          category: 'RADIATION HAZARD',
+          threatLevel: 'HAZARD',
+          scanned: encounter.scanned || false,
+          details: {
+            hazardVector: 'Thermal ionizing flare venting at 450 m/s',
+            radiationLevel: '140 Rads/sec Bremsstrahlung radiation',
+            recommendedAction: 'Keep bow deflectors angled toward plasma outflow',
+            threatClass: 'Class III Reactor Rupture',
+          },
         });
       } else if (encounter.type === 'ion_storm') {
-        const count = 6;
+        const count = 5;
         for (let i = 0; i < count; i++) {
+          const isScanNode = i === 1;
           this.hazards.push({
+            id: `ion-node-${i}`,
             x: Math.random() * w,
             y: Math.random() * (h * 0.45),
             vx: (Math.random() - 0.5) * 1.8,
             vy: Math.random() * 0.6 + 0.4,
-            radius: Math.random() * 45 + 30,
+            radius: Math.random() * 40 + 30,
             rotation: 0,
             rotSpeed: 0.02,
             points: [],
-            color: '#38bdf8',
+            color: isScanNode ? '#a855f7' : '#38bdf8',
             type: 'ion_storm',
+            isScanTarget: isScanNode,
+            hazardLabel: isScanNode ? 'RESONANT PLASMA VORTEX' : `ION DISCHARGE NODE #${i + 1}`,
+            hazardSublabel: isScanNode ? 'HARMONIC ION FLUX' : 'CAPACITOR DRAIN HAZARD',
+            category: isScanNode ? 'PLASMA WAVE HARMONIC' : 'ELECTROMAGNETIC DISCHARGE',
+            threatLevel: isScanNode ? 'CAUTION' : i === 0 ? 'CRITICAL' : 'HAZARD',
+            scanned: encounter.scanned || false,
+            details: isScanNode
+              ? {
+                  composition: 'Charged Helium-3 & Positronic Streamers',
+                  energySignature: 'High-frequency electromagnetic eddy loops',
+                  recommendedAction: 'Analyze frequency harmonic to tune shield phase modulation',
+                  threatClass: 'Class II Atmospheric Plasma',
+                }
+              : {
+                  hazardVector: 'Direct capacitor reverse-feed and arcing',
+                  energySignature: '12-16 MW Transient Voltage Spikes',
+                  recommendedAction: 'Isolate auxiliary capacitor circuits and reduce throttle to Speed 1-2',
+                  threatClass: 'Class IV EMP Discharge',
+                },
           });
         }
       } else if (encounter.type === 'alien_beacon') {
+        // Alien Monolith Transponder
         this.hazards.push({
+          id: 'alien-beacon-core',
           x: w * 0.5,
           y: h * 0.25,
           vx: 0,
           vy: 0.09,
-          radius: 34,
+          radius: 36,
           rotation: 0,
           rotSpeed: 0.018,
           points: [],
           color: '#10b981',
           type: 'alien_beacon',
+          isScanTarget: true,
+          hazardLabel: 'XENO TACHYON EMITTER',
+          hazardSublabel: 'MODULATED HARMONIC BEACON',
+          category: 'XENOTECHNOLOGY',
+          threatLevel: 'NOMINAL',
+          scanned: encounter.scanned || false,
+          details: {
+            composition: 'Hyper-dense Metamaterial with Quantum Monocrystalline Lattice',
+            energySignature: 'Pulsed Subspace Modulation at 1420.405 MHz (Hydrogen Line)',
+            salvageValue: 'Extraterrestrial linguistic and telemetry data archive',
+            recommendedAction: 'Maintain target lock for full broadband sensor telemetry capture',
+            threatClass: 'Class I Xeno Artifact',
+          },
+        });
+
+        // Repulsor Distortion Perimeter
+        this.hazards.push({
+          id: 'alien-beacon-barrier',
+          x: w * 0.5,
+          y: h * 0.25,
+          vx: 0,
+          vy: 0.09,
+          radius: 72,
+          rotation: 0,
+          rotSpeed: -0.012,
+          points: [],
+          color: '#06b6d4',
+          type: 'alien_beacon',
+          isScanTarget: false,
+          hazardLabel: 'DISPLACEMENT HORIZON',
+          hazardSublabel: 'GRAVITATIONAL REPULSOR',
+          category: 'REPULSOR BARRIER',
+          threatLevel: 'HAZARD',
+          scanned: encounter.scanned || false,
+          details: {
+            hazardVector: 'Kinetic dampening and subspace displacement wave',
+            structuralIntegrity: 'Non-collapsible gravimetric field barrier',
+            recommendedAction: 'Approach at sub-light speed; do not ram displacement field',
+            threatClass: 'Class III Kinetic Barrier',
+          },
         });
       }
     }
+  }
+
+  /**
+   * Converts world object coordinates into viewport canvas screen coordinates
+   */
+  public toScreenCoordinates(worldX: number, worldY: number, ship: ShipState, now: number): { x: number; y: number } {
+    const w = this.canvas.width;
+    const h = this.canvas.height;
+    const zoom = this.displayProps.zoomLevel || 1.0;
+    const cx = w / 2;
+    const cy = h / 2;
+
+    let camOffsetX = 0;
+    let camOffsetY = 0;
+    if (this.displayProps.viewMode === 'chase') {
+      camOffsetY = -ship.speed * 3.5;
+    } else if (this.displayProps.viewMode === 'cinematic') {
+      camOffsetX = Math.sin(now * 0.0008) * 16;
+      camOffsetY = Math.cos(now * 0.0006) * 10;
+    }
+
+    const sx = cx + (worldX + camOffsetX - cx) * zoom;
+    const sy = cy + (worldY + camOffsetY - cy) * zoom;
+    return { x: sx, y: sy };
+  }
+
+  /**
+   * Returns tactical targets with screen coordinates for HUD overlay
+   */
+  public getTacticalTargets(
+    ship: ShipState,
+    encounter: Encounter | null,
+    now: number
+  ): TacticalTarget[] {
+    const w = this.canvas.width;
+    const h = this.canvas.height;
+    if (!w || !h) return [];
+
+    const targets: TacticalTarget[] = [];
+    const edgeMargin = 32;
+
+    // Helper to clamp to screen edge if off-screen
+    const processCoordinates = (screenX: number, screenY: number) => {
+      const isOffScreen =
+        screenX < edgeMargin ||
+        screenX > w - edgeMargin ||
+        screenY < edgeMargin ||
+        screenY > h - edgeMargin;
+
+      let edgeX = screenX;
+      let edgeY = screenY;
+      let edgeAngle = 0;
+
+      if (isOffScreen) {
+        const cx = w / 2;
+        const cy = h / 2;
+        const dx = screenX - cx;
+        const dy = screenY - cy;
+        edgeAngle = Math.atan2(dy, dx);
+
+        // Intersect ray with screen edge bounds
+        const halfW = w / 2 - edgeMargin;
+        const halfH = h / 2 - edgeMargin;
+
+        const slope = dy / (dx || 0.0001);
+        let ix = dx > 0 ? halfW : -halfW;
+        let iy = slope * ix;
+
+        if (Math.abs(iy) > halfH) {
+          iy = dy > 0 ? halfH : -halfH;
+          ix = iy / slope;
+        }
+
+        edgeX = cx + ix;
+        edgeY = cy + iy;
+      }
+
+      return { isOffScreen, edgeX, edgeY, edgeAngle };
+    };
+
+    // 1. If encounter is active, map active hazards & scan targets
+    if (encounter && encounter.active && this.hazards.length > 0) {
+      // Prioritize primary hazards and scan targets (up to 4 key targets)
+      const relevantHazards = this.hazards
+        .filter((h) => h.isScanTarget || h.threatLevel === 'CRITICAL' || h.threatLevel === 'HAZARD')
+        .slice(0, 4);
+
+      // If list is small, include others
+      if (relevantHazards.length === 0) {
+        relevantHazards.push(...this.hazards.slice(0, 3));
+      }
+
+      for (const haz of relevantHazards) {
+        const screenPos = this.toScreenCoordinates(haz.x, haz.y, ship, now);
+        const { isOffScreen, edgeX, edgeY, edgeAngle } = processCoordinates(screenPos.x, screenPos.y);
+
+        // Distance in km based on encounter distance + relative Y position
+        const yDistDelta = ((haz.y - h * 0.25) / h) * 12;
+        const distanceKm = Math.max(1, Math.round(encounter.distanceRemaining + yDistDelta));
+
+        const targetType: TacticalTargetType = haz.isScanTarget ? 'scan_target' : 'hazard';
+        const threatLevel: ThreatLevel = haz.threatLevel || (haz.isScanTarget ? 'CAUTION' : 'HAZARD');
+        const threatColor =
+          threatLevel === 'CRITICAL'
+            ? '#ef4444'
+            : threatLevel === 'HAZARD'
+            ? '#f97316'
+            : haz.isScanTarget
+            ? '#10b981'
+            : '#38bdf8';
+
+        targets.push({
+          id: haz.id,
+          type: targetType,
+          label: haz.hazardLabel || encounter.title,
+          sublabel: haz.hazardSublabel || encounter.type.replace('_', ' ').toUpperCase(),
+          category: haz.category || (haz.isScanTarget ? 'SCAN TARGET' : 'HAZARD ZONE'),
+          x: screenPos.x,
+          y: screenPos.y,
+          radius: haz.radius,
+          threatLevel,
+          threatColor,
+          distanceKm,
+          relativeVelocity: Math.round((haz.vy + ship.speed * 0.45) * 18) / 10,
+          scanned: haz.scanned || encounter.scanned || false,
+          scanProgress: haz.scanProgress || (encounter.scanned ? 100 : 0),
+          details: haz.details,
+          isOffScreen,
+          edgeX,
+          edgeY,
+          edgeAngle,
+        });
+      }
+    }
+
+    // 2. Distant Celestial Planet Survey Target (always present in deep space)
+    if (this.planet) {
+      const p = this.planet;
+      const planetY = ((p.y + ship.distance * 8) % (h + p.radius * 4)) - p.radius * 2;
+      const planetScreen = this.toScreenCoordinates(p.x, planetY, ship, now);
+      const { isOffScreen, edgeX, edgeY, edgeAngle } = processCoordinates(planetScreen.x, planetScreen.y);
+
+      targets.push({
+        id: 'celestial-gas-giant',
+        type: 'celestial',
+        label: 'EXOPLANET SURVEY: AERO-IV',
+        sublabel: 'GAS GIANT & RING SYSTEM',
+        category: 'CELESTIAL SURVEY',
+        x: planetScreen.x,
+        y: planetScreen.y,
+        radius: p.radius,
+        threatLevel: 'NOMINAL',
+        threatColor: '#38bdf8',
+        distanceKm: Math.round(145000 - ship.distance * 120),
+        relativeVelocity: 0.4,
+        scanned: false,
+        scanProgress: 0,
+        details: {
+          composition: '84% Hydrogen, 15% Helium-3, Trace Methane & Silicate Rings',
+          radiationLevel: 'Low (0.04 mSv/h Magnetosphere)',
+          salvageValue: 'Massive atmospheric Helium-3 scoop reserve',
+          recommendedAction: 'Perform orbital sensor sweep to calculate atmospheric density gradient',
+          threatClass: 'Class 0 Celestial Body',
+        },
+        isOffScreen,
+        edgeX,
+        edgeY,
+        edgeAngle,
+      });
+    }
+
+    // 3. Navigation Hyper-Lane Corridor Waypoint (Forward Vector)
+    const navPos = this.toScreenCoordinates(w * 0.5, h * 0.16, ship, now);
+    const navBounds = processCoordinates(navPos.x, navPos.y);
+    targets.push({
+      id: 'nav-vector-corridor',
+      type: 'waypoint',
+      label: `NAV VECTOR // ${ship.sector.toUpperCase()}`,
+      sublabel: 'HYPER-LANE CORRIDOR',
+      category: 'NAV WAYPOINT',
+      x: navPos.x,
+      y: navPos.y,
+      radius: 22,
+      threatLevel: 'NOMINAL',
+      threatColor: '#06b6d4',
+      distanceKm: Math.round(ship.distance * 15 + 40),
+      relativeVelocity: ship.speed * 2.2,
+      scanned: true,
+      scanProgress: 100,
+      details: {
+        hazardVector: 'Nominal flight corridor; micro-debris density < 0.01 per km³',
+        recommendedAction: 'Maintain current sub-light vector heading 042°',
+        threatClass: 'Safe Transit Corridor',
+      },
+      isOffScreen: navBounds.isOffScreen,
+      edgeX: navBounds.edgeX,
+      edgeY: navBounds.edgeY,
+      edgeAngle: navBounds.edgeAngle,
+    });
+
+    // 4. Ambient Deep Space Tachyon Echo (if no active encounter)
+    if (!encounter || !encounter.active) {
+      const echoPos = this.toScreenCoordinates(w * 0.22, h * 0.38, ship, now);
+      const echoBounds = processCoordinates(echoPos.x, echoPos.y);
+      targets.push({
+        id: 'deep-space-echo',
+        type: 'scan_target',
+        label: 'SUB-SPACE EMISSION ECHO',
+        sublabel: 'FAINT TACHYON FLUX',
+        category: 'SCAN TARGET',
+        x: echoPos.x,
+        y: echoPos.y,
+        radius: 26,
+        threatLevel: 'CAUTION',
+        threatColor: '#a855f7',
+        distanceKm: Math.round(620 + Math.sin(now * 0.001) * 20),
+        relativeVelocity: 1.1,
+        scanned: false,
+        scanProgress: 0,
+        details: {
+          energySignature: 'Modulated harmonic pulse on 412.4 MHz band',
+          composition: 'Diffuse tachyon particulate envelope',
+          recommendedAction: 'Trigger science radar scan to resolve sensor clarity',
+          threatClass: 'Unclassified Anomaly',
+        },
+        isOffScreen: echoBounds.isOffScreen,
+        edgeX: echoBounds.edgeX,
+        edgeY: echoBounds.edgeY,
+        edgeAngle: echoBounds.edgeAngle,
+      });
+    }
+
+    return targets;
+  }
+
+  /**
+   * Mark target as scanned
+   */
+  public scanTarget(id: string): boolean {
+    for (const h of this.hazards) {
+      if (h.id === id) {
+        h.scanned = true;
+        h.scanProgress = 100;
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Get ship visual screen position
+   */
+  public getShipScreenPosition(): { x: number; y: number } {
+    return {
+      x: this.shipVisualX || this.canvas.width / 2,
+      y: this.shipVisualY || this.canvas.height * 0.72,
+    };
   }
 
   public render(ship: ShipState, encounter: Encounter | null, now: number) {
