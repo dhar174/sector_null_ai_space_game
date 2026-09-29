@@ -151,7 +151,7 @@ Return valid JSON with:
   "routedOfficer": "Jax" | "Elara" | "Both" | "Ship AI",
   "intent": "action" | "query" | "conversation",
   "dialogue": [{"speaker": "Jax" | "Elara" | "Ship AI", "text": "string"}],
-  "actions": [{"type": "change_speed" | "change_energy" | "change_hull" | "change_shields" | "scan_anomaly" | "evasive_burn", "value": number, "reason": "string"}],
+  "actions": [{"type": "change_speed" | "change_energy" | "change_hull" | "change_shields" | "scan_anomaly" | "evasive_burn" | "rest_cycle", "value": number, "reason": "string"}],
   "analysis": "Short 1-sentence tactical summary"
 }`,
               },
@@ -246,6 +246,7 @@ INTENT & ACTION DISCRIMINATION RULES (STRICT):
      * change_hull: Delta to hull (+15 to +20 for nanite patch, costs energy).
      * scan_anomaly: value 1 when scanning an active encounter.
      * evasive_burn: value 1 for evasive dodge maneuver.
+     * rest_cycle: value 1 for captain-ordered crew rest and sleep cycle (resets crew fatigue to 0 and reduces stress).
 2. Informational Queries & Status Checks (intent = "query" or "conversation"):
    - The Captain asks a question, checks status, inquires about crew condition, or engages in conversation (e.g., "Elara, hows your stress?", "Jax, what's our engine temp?", "Elara, what are the sensor readings?", "How is the reactor holding up?", "Good morning crew").
    - "actions" MUST BE AN EMPTY ARRAY []! Absolutely NO ship system modifications, throttle changes, or energy drains may occur.
@@ -321,7 +322,7 @@ Determine the routed officer, classify the intent ("action", "query", or "conver
                 type: {
                   type: Type.STRING,
                   description:
-                    "Action type: change_speed, change_energy, change_hull, change_shields, scan_anomaly, evasive_burn",
+                    "Action type: change_speed, change_energy, change_hull, change_shields, scan_anomaly, evasive_burn, rest_cycle",
                 },
                 value: {
                   type: Type.NUMBER,

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ShipState, CrewStatus, Encounter, CommsMessage, SettingsState, IdleTopic } from './types';
+import { ShipState, CrewStatus, Encounter, CommsMessage, SettingsState, IdleTopic, CrewLogEntry } from './types';
 import { ViewportCanvas } from './components/ViewportCanvas';
 import { ShipStatus } from './components/ShipStatus';
 import { CommsFeed } from './components/CommsFeed';
@@ -36,9 +36,11 @@ const INITIAL_SHIP_STATE: ShipState = {
 const INITIAL_CREW_STATUS: CrewStatus = {
   jaxStress: 15,
   jaxStatus: 'Nominal',
+  jaxFatigue: 0,
   elaraStress: 12,
   elaraCuriosity: 30,
   elaraStatus: 'Analytical',
+  elaraFatigue: 0,
 };
 
 const STORAGE_SETTINGS_KEY = 'sector_null_settings_v1';
@@ -46,6 +48,7 @@ const STORAGE_SETTINGS_KEY = 'sector_null_settings_v1';
 export default function App() {
   const [ship, setShip] = useState<ShipState>(INITIAL_SHIP_STATE);
   const [crew, setCrew] = useState<CrewStatus>(INITIAL_CREW_STATUS);
+  const [crewLogs, setCrewLogs] = useState<CrewLogEntry[]>([]);
   const [encounter, setEncounter] = useState<Encounter | null>(null);
   const [messages, setMessages] = useState<CommsMessage[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -325,11 +328,20 @@ export default function App() {
         };
       });
 
-      // 5. Update crew emotional states dynamically
+      // 5. Update crew emotional states dynamically and accumulate fatigue
       setCrew((prevCrew) => {
         let jaxStress = prevCrew.jaxStress;
         let elaraStress = prevCrew.elaraStress ?? 12;
         let elaraCuriosity = prevCrew.elaraCuriosity;
+        let jaxFatigue = prevCrew.jaxFatigue ?? 0;
+        let elaraFatigue = prevCrew.elaraFatigue ?? 0;
+
+        // Fatigue slowly fills up during long sessions (accelerated by high stress or combat)
+        const baseFatigueTick = 0.08;
+        const jaxFatigueGain = baseFatigueTick + (jaxStress > 50 ? 0.08 : 0) + (ship.speed === 5 ? 0.05 : 0);
+        const elaraFatigueGain = baseFatigueTick + (elaraStress > 50 ? 0.08 : 0) + (encounter ? 0.06 : 0);
+        jaxFatigue = Math.min(100, Math.max(0, jaxFatigue + jaxFatigueGain));
+        elaraFatigue = Math.min(100, Math.max(0, elaraFatigue + elaraFatigueGain));
 
         // If hull low, speed 5, or taking heavy hits, Jax stress climbs
         if (ship.hull < 50) jaxStress = Math.min(100, jaxStress + 2);
@@ -347,22 +359,72 @@ export default function App() {
         else elaraCuriosity = Math.max(20, elaraCuriosity - 0.8);
 
         const jaxStatus =
-          jaxStress > 70 ? 'Panicking' : jaxStress > 40 ? 'Stressed' : 'Nominal';
+          jaxStress > 70
+            ? 'Panicking'
+            : jaxFatigue >= 75
+            ? 'Exhausted'
+            : jaxStress > 40
+            ? 'Stressed'
+            : jaxFatigue >= 45
+            ? 'Fatigued'
+            : 'Nominal';
+
         const elaraStatus =
           elaraStress > 65
             ? 'Alarmed'
+            : elaraFatigue >= 75
+            ? 'Exhausted'
+            : elaraFatigue >= 45
+            ? 'Weary'
             : elaraCuriosity > 75
             ? 'Fascinated'
             : elaraCuriosity > 45
             ? 'Intrigued'
             : 'Analytical';
 
+        // Check for emotional shifts and record them to crew dossier log
+        if (jaxStatus !== prevCrew.jaxStatus) {
+          const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+          setCrewLogs((prevLogs) => [
+            {
+              id: `log-shift-jax-${Date.now()}`,
+              officer: 'Jax',
+              type: 'emotion_shift',
+              timestamp: time,
+              title: `Emotional Shift: ${prevCrew.jaxStatus} → ${jaxStatus}`,
+              detail: `Biometrics recorded transition to ${jaxStatus}. Stress at ${Math.round(jaxStress)}%, Fatigue deficit at ${Math.round(jaxFatigue)}%.`,
+              badge: jaxStatus.toUpperCase(),
+              severity: jaxStatus === 'Panicking' ? 'critical' : jaxStatus === 'Exhausted' || jaxStatus === 'Stressed' || jaxStatus === 'Fatigued' ? 'warning' : 'success',
+            },
+            ...prevLogs,
+          ]);
+        }
+
+        if (elaraStatus !== prevCrew.elaraStatus) {
+          const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+          setCrewLogs((prevLogs) => [
+            {
+              id: `log-shift-elara-${Date.now()}`,
+              officer: 'Elara',
+              type: 'emotion_shift',
+              timestamp: time,
+              title: `Emotional Shift: ${prevCrew.elaraStatus} → ${elaraStatus}`,
+              detail: `Neural telemetry recorded transition to ${elaraStatus}. Stress at ${Math.round(elaraStress)}%, Curiosity index at ${Math.round(elaraCuriosity)}%, Fatigue at ${Math.round(elaraFatigue)}%.`,
+              badge: elaraStatus.toUpperCase(),
+              severity: elaraStatus === 'Alarmed' || elaraStatus === 'Exhausted' ? 'critical' : elaraStatus === 'Weary' ? 'warning' : 'info',
+            },
+            ...prevLogs,
+          ]);
+        }
+
         return {
           jaxStress: Math.round(jaxStress),
           jaxStatus,
+          jaxFatigue: Math.round(jaxFatigue * 10) / 10,
           elaraStress: Math.round(elaraStress),
           elaraCuriosity: Math.round(elaraCuriosity),
           elaraStatus,
+          elaraFatigue: Math.round(elaraFatigue * 10) / 10,
         };
       });
     }, 1000);
@@ -474,22 +536,87 @@ export default function App() {
         settings
       );
 
-      // 3. Play sound & add crew dialogue to feed
+      // 3. Play sound & add crew dialogue to feed and crew logs
       if (response.dialogue && response.dialogue.length > 0) {
         response.dialogue.forEach((line, index) => {
           setTimeout(() => {
             sound.playTransmissionIn(line.speaker);
+            const lineTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
             setMessages((prev) => [
               ...prev,
               {
                 id: `crew-${Date.now()}-${index}`,
                 speaker: line.speaker,
                 text: line.text,
-                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                timestamp: lineTime,
               },
             ]);
+
+            // Add dialogue transcript to officer's dossier log
+            if (line.speaker === 'Jax' || line.speaker === 'Elara') {
+              setCrewLogs((prevLogs) => [
+                {
+                  id: `log-comms-${Date.now()}-${index}`,
+                  officer: line.speaker as CharacterType,
+                  type: 'conversation',
+                  timestamp: lineTime,
+                  title: `Bridge Transmission (${line.speaker})`,
+                  detail: `"${line.text}"`,
+                  badge: 'RADIO COMMS',
+                  severity: 'info',
+                },
+                ...prevLogs,
+              ]);
+            }
           }, index * 400);
         });
+      }
+
+      // Check for rest / sleep cycle command
+      const isRestOrder =
+        commandText.toLowerCase().includes('rest') ||
+        commandText.toLowerCase().includes('sleep') ||
+        commandText.toLowerCase().includes('nap') ||
+        commandText.toLowerCase().includes('fatigue') ||
+        (response.actions && response.actions.some((a) => a.type === 'rest_cycle'));
+
+      if (isRestOrder) {
+        sound.playRestCycle();
+        setCrew((prev) => ({
+          ...prev,
+          jaxFatigue: 0,
+          elaraFatigue: 0,
+          jaxStress: Math.max(10, Math.round(prev.jaxStress * 0.45)),
+          elaraStress: Math.max(8, Math.round((prev.elaraStress ?? 12) * 0.45)),
+          jaxStatus: 'Nominal',
+          elaraStatus: 'Analytical',
+          lastRestTimestamp: Date.now(),
+        }));
+
+        const restTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        setCrewLogs((prevLogs) => [
+          {
+            id: `log-rest-jax-${Date.now()}`,
+            officer: 'Jax',
+            type: 'milestone',
+            timestamp: restTime,
+            title: 'Regeneration Sleep Cycle Executed',
+            detail: 'Captain initiated rest/sleep cycle. Manifold pressure nominal, biological fatigue purged to 0%.',
+            badge: 'REST / SLEEP CYCLE',
+            severity: 'success',
+          },
+          {
+            id: `log-rest-elara-${Date.now()}`,
+            officer: 'Elara',
+            type: 'milestone',
+            timestamp: restTime,
+            title: 'Synchronized Neuro-Rest Cycle',
+            detail: 'Captain authorized rest cycle. Astrometric arrays calibrated to standby, fatigue deficit purged to 0%.',
+            badge: 'REST / SLEEP CYCLE',
+            severity: 'success',
+          },
+          ...prevLogs,
+        ]);
       }
 
       // 4. Apply actionable JSON state changes to ship
@@ -799,6 +926,17 @@ export default function App() {
           onSendCommand={handleSendCommand}
           activeTopic={activeIdleTopic}
           onSelectTopic={handleSelectIdleTopic}
+          logs={crewLogs}
+          onAddLog={(entry) =>
+            setCrewLogs((prev) => [
+              {
+                id: `log-manual-${Date.now()}`,
+                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+                ...entry,
+              },
+              ...prev,
+            ])
+          }
         />
       )}
 

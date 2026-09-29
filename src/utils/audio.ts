@@ -144,6 +144,41 @@ class SoundEngine {
     }
   }
 
+  // Soothing ambient sleep/rest cycle chime
+  public playRestCycle() {
+    if (!this.enabled) return;
+    this.initCtx();
+    if (!this.ctx) return;
+
+    try {
+      const now = this.ctx.currentTime;
+      // Gentle 3-note descending twilight lullaby: G4 (392Hz) -> E4 (329Hz) -> C4 (261Hz)
+      const freqs = [392, 329.63, 261.63];
+      freqs.forEach((freq, idx) => {
+        if (!this.ctx) return;
+        const noteStart = now + idx * 0.18;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, noteStart);
+        osc.frequency.exponentialRampToValueAtTime(freq * 0.98, noteStart + 0.45);
+
+        gain.gain.setValueAtTime(0.001, noteStart);
+        gain.gain.linearRampToValueAtTime(0.06, noteStart + 0.05);
+        gain.gain.exponentialRampToValueAtTime(0.001, noteStart + 0.55);
+
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+
+        osc.start(noteStart);
+        osc.stop(noteStart + 0.55);
+      });
+    } catch {
+      // Audio playback failsafe
+    }
+  }
+
   // Hull hit or asteroid collision impact sound
   public playImpact() {
     if (!this.enabled) return;

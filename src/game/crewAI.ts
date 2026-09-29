@@ -854,6 +854,35 @@ export function generateSimulatedCrewResponse(
     return { routedOfficer, intent, dialogue, actions, analysis };
   }
 
+  // Action 8: REST / SLEEP / REJUVENATION / FATIGUE RECOVERY
+  if (
+    lower.includes('rest') ||
+    lower.includes('sleep') ||
+    lower.includes('nap') ||
+    lower.includes('fatigue') ||
+    lower.includes('cycle') ||
+    lower.includes('rejuvenat') ||
+    lower.includes('shift change') ||
+    lower.includes('crew rotation') ||
+    lower.includes('stand down')
+  ) {
+    routedOfficer = 'Both';
+    intent = 'action';
+
+    dialogue.push({
+      speaker: 'Jax',
+      text: "Music to my ears, Cap! Setting the engineering consoles to auto-throttle and climbing into the regeneration bunk. Watch the manifold pressure for me!",
+    });
+    dialogue.push({
+      speaker: 'Elara',
+      text: "Acknowledged, Captain. Astrometric arrays switched to passive monitoring. Initiating synchronized neuro-rest cycle. Biometric fatigue purging.",
+    });
+    actions.push({ type: 'rest_cycle', value: 1, reason: 'Crew rest and sleep cycle initiated' });
+    analysis = 'Rest cycle initiated: Crew fatigue purged to 0% and stress reduced.';
+
+    return { routedOfficer, intent, dialogue, actions, analysis };
+  }
+
   // Fallback: Acknowledged order
   if (routedOfficer === 'Jax') {
     dialogue.push({

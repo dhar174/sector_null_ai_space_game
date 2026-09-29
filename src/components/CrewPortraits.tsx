@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { CrewStatus, IdleTopic } from '../types';
+import { CrewStatus, IdleTopic, CrewLogEntry } from '../types';
 import {
   Heart,
   Activity,
@@ -15,6 +15,16 @@ import {
   ShieldAlert,
   Flame,
   MessageSquare,
+  Moon,
+  Coffee,
+  FileText,
+  History,
+  Award,
+  Clock,
+  Filter,
+  PlusCircle,
+  Bookmark,
+  CheckCircle2,
 } from 'lucide-react';
 
 export type CharacterType = 'Jax' | 'Elara';
@@ -48,7 +58,8 @@ export const getStressGlowConfig = (
   status: string,
   overrideEmotion?: string | null,
   curiosity: number = 30,
-  size: number = 80
+  size: number = 80,
+  fatigue: number = 0
 ): StressGlowConfig => {
   const isJax = officer === 'Jax';
 
@@ -60,13 +71,19 @@ export const getStressGlowConfig = (
       effectiveEmotion = overrideEmotion;
       if (overrideEmotion === 'Panicking') effectiveStress = Math.max(effectiveStress, 85);
       else if (overrideEmotion === 'Stressed') effectiveStress = Math.max(effectiveStress, 55);
+      else if (overrideEmotion === 'Exhausted') effectiveStress = Math.max(effectiveStress, 40);
+      else if (overrideEmotion === 'Fatigued') effectiveStress = Math.max(effectiveStress, 25);
       else if (overrideEmotion === 'Nominal') effectiveStress = Math.min(effectiveStress, 18);
     } else {
       effectiveEmotion =
         status === 'Panicking' || effectiveStress > 70
           ? 'Panicking'
+          : status === 'Exhausted' || fatigue >= 75
+          ? 'Exhausted'
           : status === 'Stressed' || effectiveStress > 35
           ? 'Stressed'
+          : status === 'Fatigued' || fatigue >= 45
+          ? 'Fatigued'
           : 'Nominal';
     }
   } else {
@@ -74,6 +91,8 @@ export const getStressGlowConfig = (
     if (overrideEmotion) {
       effectiveEmotion = overrideEmotion;
       if (overrideEmotion === 'Alarmed') effectiveStress = Math.max(effectiveStress, 85);
+      else if (overrideEmotion === 'Exhausted') effectiveStress = Math.max(effectiveStress, 40);
+      else if (overrideEmotion === 'Weary') effectiveStress = Math.max(effectiveStress, 25);
       else if (overrideEmotion === 'Fascinated') effectiveStress = Math.min(effectiveStress, 18);
       else if (overrideEmotion === 'Intrigued') effectiveStress = Math.min(effectiveStress, 22);
       else if (overrideEmotion === 'Analytical') effectiveStress = Math.min(effectiveStress, 15);
@@ -81,8 +100,12 @@ export const getStressGlowConfig = (
       effectiveEmotion =
         status === 'Alarmed' || effectiveStress > 65
           ? 'Alarmed'
+          : status === 'Exhausted' || fatigue >= 75
+          ? 'Exhausted'
           : curiosity > 75
           ? 'Fascinated'
+          : status === 'Weary' || fatigue >= 45
+          ? 'Weary'
           : curiosity > 45
           ? 'Intrigued'
           : 'Analytical';
@@ -127,6 +150,22 @@ export const getStressGlowConfig = (
       haloAlpha = 0.36 + t * 0.26;
       pulseAnimation = 'animate-stress-med';
       statusBadgeColor = 'text-amber-300 border-amber-600 bg-amber-950/90';
+    } else if (effectiveEmotion === 'Exhausted') {
+      // Critical biological fatigue
+      rgb = '168, 85, 247';
+      hexColor = '#c084fc';
+      borderHex = 'rgba(168, 85, 247, 0.7)';
+      haloAlpha = 0.4;
+      pulseAnimation = 'animate-pulse';
+      statusBadgeColor = 'text-purple-300 border-purple-500 bg-purple-950/90 animate-pulse';
+    } else if (effectiveEmotion === 'Fatigued') {
+      // Weary amber/slate
+      rgb = '217, 119, 6';
+      hexColor = '#fbbf24';
+      borderHex = 'rgba(217, 119, 6, 0.55)';
+      haloAlpha = 0.28;
+      pulseAnimation = 'animate-stress-slow';
+      statusBadgeColor = 'text-amber-300 border-amber-600/70 bg-amber-950/80';
     } else {
       // Calm Amber/Gold
       const t = Math.max(0, Math.min(1, effectiveStress / 35));
@@ -157,6 +196,22 @@ export const getStressGlowConfig = (
       haloAlpha = 0.36 + t * 0.26;
       pulseAnimation = 'animate-stress-med';
       statusBadgeColor = 'text-amber-300 border-amber-500 bg-amber-950/90';
+    } else if (effectiveEmotion === 'Exhausted') {
+      // Critical fatigue
+      rgb = '147, 51, 234';
+      hexColor = '#a855f7';
+      borderHex = 'rgba(168, 85, 247, 0.7)';
+      haloAlpha = 0.38;
+      pulseAnimation = 'animate-pulse';
+      statusBadgeColor = 'text-purple-300 border-purple-500 bg-purple-950/90 animate-pulse';
+    } else if (effectiveEmotion === 'Weary') {
+      // Weary indigo
+      rgb = '99, 102, 241';
+      hexColor = '#818cf8';
+      borderHex = 'rgba(99, 102, 241, 0.55)';
+      haloAlpha = 0.28;
+      pulseAnimation = 'animate-stress-slow';
+      statusBadgeColor = 'text-indigo-300 border-indigo-600/70 bg-indigo-950/80';
     } else {
       // Calm Tiers for Elara
       if (effectiveEmotion === 'Fascinated') {
@@ -241,14 +296,18 @@ interface PortraitProps {
 interface JaxPortraitProps extends PortraitProps {
   stress: number;
   status: CrewStatus['jaxStatus'];
-  overrideEmotion?: 'Nominal' | 'Stressed' | 'Panicking' | null;
+  fatigue?: number;
+  isResting?: boolean;
+  overrideEmotion?: 'Nominal' | 'Stressed' | 'Panicking' | 'Fatigued' | 'Exhausted' | null;
 }
 
 interface ElaraPortraitProps extends PortraitProps {
   stress: number;
   curiosity: number;
   status: CrewStatus['elaraStatus'];
-  overrideEmotion?: 'Analytical' | 'Intrigued' | 'Fascinated' | 'Alarmed' | null;
+  fatigue?: number;
+  isResting?: boolean;
+  overrideEmotion?: 'Analytical' | 'Intrigued' | 'Fascinated' | 'Alarmed' | 'Weary' | 'Exhausted' | null;
 }
 
 /**
@@ -258,6 +317,8 @@ interface ElaraPortraitProps extends PortraitProps {
 export const JaxPortrait: React.FC<JaxPortraitProps> = ({
   stress,
   status,
+  fatigue = 0,
+  isResting = false,
   size = 80,
   className = '',
   showStatusBadge = false,
@@ -267,10 +328,13 @@ export const JaxPortrait: React.FC<JaxPortraitProps> = ({
   hasIdleTopic = false,
   idleTopicSnippet,
 }) => {
-  const glow = getStressGlowConfig('Jax', stress, status, overrideEmotion, 0, size);
+  const currentFatigue = Math.max(0, Math.min(100, Math.round(fatigue)));
+  const glow = getStressGlowConfig('Jax', stress, status, overrideEmotion, 0, size, currentFatigue);
   const effectiveEmotion = glow.emotionLabel;
   const isPanic = glow.isPanicOrAlarmed;
   const isStressed = glow.isStressed;
+  const isExhausted = !isPanic && (effectiveEmotion === 'Exhausted' || currentFatigue >= 75);
+  const isFatigued = !isPanic && !isStressed && (isExhausted || effectiveEmotion === 'Fatigued' || currentFatigue >= 45);
 
   // Biometric Heart Rate based on stress
   const heartRate = Math.min(185, Math.round(68 + (glow.effectiveStress / 100) * 88));
@@ -282,7 +346,7 @@ export const JaxPortrait: React.FC<JaxPortraitProps> = ({
         interactive ? 'cursor-pointer group' : ''
       } ${className}`}
       style={{ width: size, height: size }}
-      title={`Jax (Chief Engineer) — Emotion: ${effectiveEmotion.toUpperCase()} | Stress: ${glow.effectiveStress}% | Heart Rate: ${heartRate} BPM (Reactive Biometric Stress Glow Active)`}
+      title={`Jax (Chief Engineer) — Emotion: ${effectiveEmotion.toUpperCase()} | Fatigue: ${currentFatigue}% | Stress: ${glow.effectiveStress}% | Heart Rate: ${heartRate} BPM`}
     >
       {/* Dynamic Ambient Stress Glow Corona (Radiates outside HUD frame boundary) */}
       <div
@@ -473,6 +537,18 @@ export const JaxPortrait: React.FC<JaxPortraitProps> = ({
               <line x1="49" y1="36" x2="49" y2="42" stroke="#633920" strokeWidth="1.2" />
               <line x1="51" y1="37" x2="51" y2="41" stroke="#633920" strokeWidth="1" />
             </g>
+          ) : isExhausted ? (
+            /* Exhausted: Heavy sloped weary downward brows */
+            <g>
+              <path d="M34 42 Q40 40 46 42" fill="none" stroke="#1f1a18" strokeWidth="2.2" strokeLinecap="round" />
+              <path d="M54 42 Q60 40 66 42" fill="none" stroke="#1f1a18" strokeWidth="2.2" strokeLinecap="round" />
+            </g>
+          ) : isFatigued ? (
+            /* Fatigued: Low flat weary brows */
+            <g>
+              <path d="M34 41 L46 41" fill="none" stroke="#1f1a18" strokeWidth="2.3" strokeLinecap="round" />
+              <path d="M54 41 L66 41" fill="none" stroke="#1f1a18" strokeWidth="2.3" strokeLinecap="round" />
+            </g>
           ) : (
             /* Nominal: Confident, slight wry smirk angle */
             <g>
@@ -490,17 +566,18 @@ export const JaxPortrait: React.FC<JaxPortraitProps> = ({
               cx="40"
               cy="47"
               r="5.5"
-              fill={isPanic ? '#dc2626' : isStressed ? '#ea580c' : '#f59e0b'}
+              fill={isPanic ? '#dc2626' : isExhausted ? '#a855f7' : isStressed ? '#ea580c' : isFatigued ? '#d97706' : '#f59e0b'}
               className={isPanic ? 'animate-ping' : ''}
+              opacity={isExhausted ? 0.65 : 1}
             />
             {/* Ocular reticle crosshair */}
             <path
               d="M40 43 L40 51 M36 47 L44 47"
               stroke="#ffffff"
               strokeWidth="0.8"
-              opacity="0.9"
+              opacity={isExhausted ? 0.4 : 0.9}
             />
-            <circle cx="40" cy="47" r="3" fill="none" stroke="#ffffff" strokeWidth="0.6" strokeDasharray="1 1" />
+            <circle cx="40" cy="47" r="3" fill="none" stroke="#ffffff" strokeWidth="0.6" strokeDasharray="1 1" opacity={isExhausted ? 0.4 : 1} />
           </g>
 
           {/* 3. JAX'S NATURAL EYE (Viewer Right) */}
@@ -520,6 +597,26 @@ export const JaxPortrait: React.FC<JaxPortraitProps> = ({
               <circle cx="60" cy="47" r="1" fill="#000000" />
               {/* Under-eye strain shadow */}
               <path d="M55 50 Q60 52 65 50" fill="none" stroke="#633920" strokeWidth="1" />
+            </g>
+          ) : isExhausted ? (
+            /* Exhausted: Heavy drooping eyelid, sleep strain shadow */
+            <g>
+              <ellipse cx="60" cy="48" rx="5" ry="3.2" fill="#ffffff" />
+              <circle cx="60" cy="48" r="1.8" fill="#78350f" />
+              <circle cx="60" cy="48" r="0.9" fill="#000000" />
+              {/* Heavy Drooping upper eyelid */}
+              <path d="M54 46 Q60 48.5 66 46" fill="#382319" stroke="#1f1a18" strokeWidth="1.2" />
+              {/* Exhaustion under-eye dark bag */}
+              <path d="M54 51 Q60 53.5 66 51" fill="none" stroke="#581c87" strokeWidth="1.2" opacity="0.8" />
+            </g>
+          ) : isFatigued ? (
+            /* Fatigued: Noticeable eyelid droop and tired shadow */
+            <g>
+              <ellipse cx="60" cy="47.5" rx="5.2" ry="3.8" fill="#ffffff" />
+              <circle cx="60" cy="47.5" r="2.0" fill="#78350f" />
+              <circle cx="60" cy="47.5" r="1.0" fill="#000000" />
+              <path d="M54 45.8 Q60 47.2 66 45.8" fill="#382319" stroke="#1f1a18" strokeWidth="1" />
+              <path d="M54 50.5 Q60 52.5 66 50.5" fill="none" stroke="#78350f" strokeWidth="1" opacity="0.6" />
             </g>
           ) : (
             /* Nominal: Calm, confident, almond shaped */
@@ -563,6 +660,18 @@ export const JaxPortrait: React.FC<JaxPortraitProps> = ({
                 strokeDasharray="2 1"
               />
             </g>
+          ) : isExhausted ? (
+            /* Exhausted: Heavy sigh downward line */
+            <path
+              d="M44 65 Q50 63.5 56 65"
+              fill="none"
+              stroke="#1f1a18"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+            />
+          ) : isFatigued ? (
+            /* Fatigued: Weary flat resting mouth */
+            <line x1="44" y1="64" x2="56" y2="64" stroke="#1f1a18" strokeWidth="2.5" strokeLinecap="round" />
           ) : (
             /* Nominal: Confident wry smirk */
             <path
@@ -608,12 +717,81 @@ export const JaxPortrait: React.FC<JaxPortraitProps> = ({
             fontFamily="monospace"
             letterSpacing="0.8"
           >
-            {isPanic ? '⚠️ CRITICAL OVERHEAT' : isStressed ? 'STRAINED' : 'JAX // ENGR'}
+            {isPanic ? '⚠️ CRITICAL OVERHEAT' : isStressed ? 'STRAINED' : isExhausted ? '💤 EXHAUSTED' : isFatigued ? 'WEARY // FATIGUED' : 'JAX // ENGR'}
           </text>
         </svg>
 
         {/* Scanline CRT overlay */}
         <div className="absolute inset-0 pointer-events-none bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.3)_50%)] bg-[length:100%_4px] opacity-40" />
+
+        {/* Visual Fatigue Indicator HUD Badge (Top Left for size >= 36) */}
+        {size >= 36 && (
+          <div
+            className={`absolute top-1 left-1 z-20 flex items-center gap-1 px-1 py-0.5 rounded bg-black/85 border text-[7.5px] font-terminal transition-all select-none shadow-md ${
+              currentFatigue >= 70
+                ? 'border-purple-500/80 text-purple-300 shadow-[0_0_8px_rgba(168,85,247,0.4)] animate-pulse'
+                : currentFatigue >= 35
+                ? 'border-amber-500/70 text-amber-300'
+                : 'border-emerald-600/50 text-emerald-300'
+            }`}
+            title={`Jax Fatigue: ${currentFatigue}% (${
+              currentFatigue >= 70 ? 'CRITICAL EXHAUSTION' : currentFatigue >= 35 ? 'FATIGUED' : 'RESTED'
+            }) — Captain command 'rest/sleep cycle' to reset.`}
+          >
+            <Moon
+              className={`w-2.5 h-2.5 shrink-0 ${
+                currentFatigue >= 70
+                  ? 'text-purple-400'
+                  : currentFatigue >= 35
+                  ? 'text-amber-400'
+                  : 'text-emerald-400'
+              }`}
+            />
+            <div className="w-4 sm:w-6 h-1 bg-slate-900 rounded-full overflow-hidden border border-slate-700/60">
+              <div
+                className={`h-full rounded-full transition-all duration-500 ${
+                  currentFatigue >= 70
+                    ? 'bg-purple-500'
+                    : currentFatigue >= 35
+                    ? 'bg-amber-400'
+                    : 'bg-emerald-400'
+                }`}
+                style={{ width: `${currentFatigue}%` }}
+              />
+            </div>
+            <span className="font-mono text-[7px] font-bold">{currentFatigue}%</span>
+          </div>
+        )}
+
+        {/* Persistent Right Edge Vertical Liquid-Crystal Fatigue Gauge */}
+        <div
+          className="absolute top-2 bottom-6 right-0.5 w-[3px] bg-slate-950/80 rounded-full overflow-hidden border border-slate-800 z-20 pointer-events-none"
+          title={`Fatigue Level: ${currentFatigue}%`}
+        >
+          <div
+            className={`w-full absolute bottom-0 rounded-full transition-all duration-700 ${
+              currentFatigue >= 70
+                ? 'bg-gradient-to-t from-purple-600 to-rose-500 shadow-[0_0_6px_#a855f7]'
+                : currentFatigue >= 35
+                ? 'bg-gradient-to-t from-amber-600 to-amber-400 shadow-[0_0_4px_#f59e0b]'
+                : 'bg-gradient-to-t from-emerald-600 to-emerald-400 shadow-[0_0_4px_#10b981]'
+            }`}
+            style={{ height: `${Math.max(4, currentFatigue)}%` }}
+          />
+        </div>
+
+        {/* Rest / Sleep Cycle Active Ambient Overlay */}
+        {isResting && (
+          <div className="absolute inset-0 z-30 pointer-events-none bg-indigo-950/75 backdrop-blur-[0.5px] flex flex-col items-center justify-center animate-fade-in text-center p-1">
+            <Moon className="w-5 h-5 text-indigo-300 animate-pulse mb-0.5" />
+            <span className="text-[7px] font-terminal font-bold tracking-widest text-indigo-200 bg-black/80 px-1 py-0.2 rounded border border-indigo-500/50">
+              💤 SLEEP CYCLE
+            </span>
+            <span className="text-[6.5px] font-mono text-cyan-300 animate-ping mt-0.5">
+              RECHARGING
+            </span>
+          </div>
+        )}
 
         {/* Live Heart Rate Telemetry Pip (Bottom Left) */}
         <div
@@ -681,6 +859,8 @@ export const ElaraPortrait: React.FC<ElaraPortraitProps> = ({
   stress,
   curiosity,
   status,
+  fatigue = 0,
+  isResting = false,
   size = 80,
   className = '',
   showStatusBadge = false,
@@ -690,11 +870,14 @@ export const ElaraPortrait: React.FC<ElaraPortraitProps> = ({
   hasIdleTopic = false,
   idleTopicSnippet,
 }) => {
-  const glow = getStressGlowConfig('Elara', stress, status, overrideEmotion, curiosity, size);
+  const currentFatigue = Math.max(0, Math.min(100, Math.round(fatigue)));
+  const glow = getStressGlowConfig('Elara', stress, status, overrideEmotion, curiosity, size, currentFatigue);
   const effectiveEmotion = glow.emotionLabel;
   const isAlarmed = glow.isPanicOrAlarmed;
-  const isFascinated = effectiveEmotion === 'Fascinated';
-  const isIntrigued = effectiveEmotion === 'Intrigued';
+  const isExhausted = !isAlarmed && (effectiveEmotion === 'Exhausted' || currentFatigue >= 75);
+  const isWeary = !isAlarmed && (isExhausted || effectiveEmotion === 'Weary' || currentFatigue >= 45);
+  const isFascinated = !isWeary && effectiveEmotion === 'Fascinated';
+  const isIntrigued = !isWeary && effectiveEmotion === 'Intrigued';
 
   // Biometric Heart Rate based on stress
   const heartRate = Math.min(175, Math.round(62 + (glow.effectiveStress / 100) * 78));
@@ -706,7 +889,7 @@ export const ElaraPortrait: React.FC<ElaraPortraitProps> = ({
         interactive ? 'cursor-pointer group' : ''
       } ${className}`}
       style={{ width: size, height: size }}
-      title={`Elara (Science Officer) — Emotion: ${effectiveEmotion.toUpperCase()} | Stress: ${glow.effectiveStress}% | Curiosity: ${curiosity}% | Heart Rate: ${heartRate} BPM (Reactive Biometric Stress Glow Active)`}
+      title={`Elara (Science Officer) — Emotion: ${effectiveEmotion.toUpperCase()} | Fatigue: ${currentFatigue}% | Stress: ${glow.effectiveStress}% | Curiosity: ${curiosity}% | Heart Rate: ${heartRate} BPM`}
     >
       {/* Dynamic Ambient Stress Glow Corona (Radiates outside HUD frame boundary) */}
       <div
@@ -896,6 +1079,18 @@ export const ElaraPortrait: React.FC<ElaraPortraitProps> = ({
               <path d="M37 38 L46 42" fill="none" stroke="#0f172a" strokeWidth="1.8" strokeLinecap="round" />
               <path d="M54 42 L63 38" fill="none" stroke="#0f172a" strokeWidth="1.8" strokeLinecap="round" />
             </g>
+          ) : isExhausted ? (
+            /* Exhausted: Heavily sloped weary brows */
+            <g>
+              <path d="M37 41 Q42 43 47 41" fill="none" stroke="#0f172a" strokeWidth="1.6" strokeLinecap="round" />
+              <path d="M53 41 Q58 43 63 41" fill="none" stroke="#0f172a" strokeWidth="1.6" strokeLinecap="round" />
+            </g>
+          ) : isWeary ? (
+            /* Weary: Low flat fatigued line */
+            <g>
+              <path d="M37 40 L47 40" fill="none" stroke="#0f172a" strokeWidth="1.5" strokeLinecap="round" />
+              <path d="M53 40 L63 40" fill="none" stroke="#0f172a" strokeWidth="1.5" strokeLinecap="round" />
+            </g>
           ) : isFascinated || isIntrigued ? (
             /* Fascinated / Intrigued: Elegantly arched high in wonder */
             <g>
@@ -918,11 +1113,13 @@ export const ElaraPortrait: React.FC<ElaraPortraitProps> = ({
               fill={
                 isAlarmed
                   ? 'rgba(239,68,68,0.35)'
+                  : isExhausted
+                  ? 'rgba(168,85,247,0.25)'
                   : isFascinated
                   ? 'rgba(6,182,212,0.45)'
                   : 'rgba(56,189,248,0.25)'
               }
-              stroke={isAlarmed ? '#ef4444' : isFascinated ? '#38bdf8' : '#06b6d4'}
+              stroke={isAlarmed ? '#ef4444' : isExhausted ? '#a855f7' : isFascinated ? '#38bdf8' : '#06b6d4'}
               strokeWidth="0.8"
             />
             {/* Scanning data lines or constellation */}
@@ -931,6 +1128,12 @@ export const ElaraPortrait: React.FC<ElaraPortraitProps> = ({
                 <line x1="36" y1="45" x2="46" y2="49" />
                 <line x1="36" y1="49" x2="46" y2="45" />
                 <circle cx="41" cy="47" r="1.5" fill="#f43f5e" />
+              </g>
+            ) : isExhausted ? (
+              /* Low-power dimmed telemetry */
+              <g stroke="#a855f7" strokeWidth="0.6" opacity="0.6">
+                <line x1="36" y1="47" x2="46" y2="47" strokeDasharray="1 2" />
+                <circle cx="41" cy="47" r="1.3" fill="#a855f7" />
               </g>
             ) : isFascinated ? (
               /* Glowing cosmic ring in visor */
@@ -957,6 +1160,26 @@ export const ElaraPortrait: React.FC<ElaraPortraitProps> = ({
               <circle cx="58" cy="47" r="2.8" fill="#1e3a8a" stroke="#ef4444" strokeWidth="0.8" />
               <circle cx="58" cy="47" r="1.4" fill="#020617" />
               <circle cx="57" cy="46" r="0.6" fill="#ffffff" />
+            </g>
+          ) : isExhausted ? (
+            /* Exhausted: Heavy drooping eyelid, violet dark circle */
+            <g>
+              <ellipse cx="58.5" cy="48" rx="5.2" ry="3.2" fill="#ffffff" />
+              <circle cx="58.5" cy="48" r="1.8" fill="#0284c7" />
+              <circle cx="58.5" cy="48" r="0.9" fill="#0f172a" />
+              {/* Drooping eyelid */}
+              <path d="M53 46 Q58.5 48.5 64 46" fill="#1e293b" stroke="#0f172a" strokeWidth="1.2" />
+              {/* Exhaustion shadow */}
+              <path d="M53 51 Q58.5 53 64 51" fill="none" stroke="#581c87" strokeWidth="1.1" opacity="0.75" />
+            </g>
+          ) : isWeary ? (
+            /* Weary: Low eyelid half-tired */
+            <g>
+              <ellipse cx="58.5" cy="47.5" rx="5.2" ry="3.8" fill="#ffffff" />
+              <circle cx="58.5" cy="47.5" r="2.0" fill="#0284c7" />
+              <circle cx="58.5" cy="47.5" r="1.0" fill="#0f172a" />
+              <path d="M53 45.8 Q58.5 47.5 64 45.8" fill="#1e293b" stroke="#0f172a" strokeWidth="1" />
+              <path d="M53 50.5 Q58.5 52 64 50.5" fill="none" stroke="#334155" strokeWidth="0.8" opacity="0.6" />
             </g>
           ) : isFascinated ? (
             /* Fascinated: Sparkling with cosmic stars & wonder */
@@ -993,6 +1216,26 @@ export const ElaraPortrait: React.FC<ElaraPortraitProps> = ({
               <ellipse cx="50" cy="64" rx="4" ry="2.5" fill="#881337" stroke="#4c0519" strokeWidth="0.8" />
               <line x1="48" y1="63" x2="52" y2="63" stroke="#ffffff" strokeWidth="0.8" />
             </g>
+          ) : isExhausted ? (
+            /* Exhausted: Subtle weary sigh mouth */
+            <path
+              d="M46 65 Q50 63.8 54 65"
+              fill="none"
+              stroke="#0f172a"
+              strokeWidth="1.3"
+              strokeLinecap="round"
+            />
+          ) : isWeary ? (
+            /* Weary: Tired flat straight line */
+            <line
+              x1="46"
+              y1="64"
+              x2="54"
+              y2="64"
+              stroke="#0f172a"
+              strokeWidth="1.2"
+              strokeLinecap="round"
+            />
           ) : isFascinated ? (
             /* Soft, fascinated smile */
             <path
@@ -1052,12 +1295,81 @@ export const ElaraPortrait: React.FC<ElaraPortraitProps> = ({
             fontFamily="monospace"
             letterSpacing="0.8"
           >
-            {isAlarmed ? '⚠️ ANOMALY HAZARD' : isFascinated ? '✨ FASCINATED' : 'ELARA // SCI'}
+            {isAlarmed ? '⚠️ ANOMALY HAZARD' : isExhausted ? '💤 EXHAUSTED' : isWeary ? 'WEARY // FATIGUED' : isFascinated ? '✨ FASCINATED' : 'ELARA // SCI'}
           </text>
         </svg>
 
         {/* Scanline CRT overlay */}
         <div className="absolute inset-0 pointer-events-none bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.3)_50%)] bg-[length:100%_4px] opacity-40" />
+
+        {/* Visual Fatigue Indicator HUD Badge (Top Left for size >= 36) */}
+        {size >= 36 && (
+          <div
+            className={`absolute top-1 left-1 z-20 flex items-center gap-1 px-1 py-0.5 rounded bg-black/85 border text-[7.5px] font-terminal transition-all select-none shadow-md ${
+              currentFatigue >= 70
+                ? 'border-purple-500/80 text-purple-300 shadow-[0_0_8px_rgba(168,85,247,0.4)] animate-pulse'
+                : currentFatigue >= 35
+                ? 'border-amber-500/70 text-amber-300'
+                : 'border-cyan-600/50 text-cyan-300'
+            }`}
+            title={`Elara Fatigue: ${currentFatigue}% (${
+              currentFatigue >= 70 ? 'CRITICAL EXHAUSTION' : currentFatigue >= 35 ? 'WEARY / FATIGUED' : 'RESTED'
+            }) — Captain command 'rest/sleep cycle' to reset.`}
+          >
+            <Moon
+              className={`w-2.5 h-2.5 shrink-0 ${
+                currentFatigue >= 70
+                  ? 'text-purple-400'
+                  : currentFatigue >= 35
+                  ? 'text-amber-400'
+                  : 'text-cyan-400'
+              }`}
+            />
+            <div className="w-4 sm:w-6 h-1 bg-slate-900 rounded-full overflow-hidden border border-slate-700/60">
+              <div
+                className={`h-full rounded-full transition-all duration-500 ${
+                  currentFatigue >= 70
+                    ? 'bg-purple-500'
+                    : currentFatigue >= 35
+                    ? 'bg-amber-400'
+                    : 'bg-cyan-400'
+                }`}
+                style={{ width: `${currentFatigue}%` }}
+              />
+            </div>
+            <span className="font-mono text-[7px] font-bold">{currentFatigue}%</span>
+          </div>
+        )}
+
+        {/* Persistent Right Edge Vertical Liquid-Crystal Fatigue Gauge */}
+        <div
+          className="absolute top-2 bottom-6 right-0.5 w-[3px] bg-slate-950/80 rounded-full overflow-hidden border border-slate-800 z-20 pointer-events-none"
+          title={`Fatigue Level: ${currentFatigue}%`}
+        >
+          <div
+            className={`w-full absolute bottom-0 rounded-full transition-all duration-700 ${
+              currentFatigue >= 70
+                ? 'bg-gradient-to-t from-purple-600 to-rose-500 shadow-[0_0_6px_#a855f7]'
+                : currentFatigue >= 35
+                ? 'bg-gradient-to-t from-amber-600 to-amber-400 shadow-[0_0_4px_#f59e0b]'
+                : 'bg-gradient-to-t from-cyan-600 to-cyan-400 shadow-[0_0_4px_#06b6d4]'
+            }`}
+            style={{ height: `${Math.max(4, currentFatigue)}%` }}
+          />
+        </div>
+
+        {/* Rest / Sleep Cycle Active Ambient Overlay */}
+        {isResting && (
+          <div className="absolute inset-0 z-30 pointer-events-none bg-indigo-950/75 backdrop-blur-[0.5px] flex flex-col items-center justify-center animate-fade-in text-center p-1">
+            <Moon className="w-5 h-5 text-indigo-300 animate-pulse mb-0.5" />
+            <span className="text-[7px] font-terminal font-bold tracking-widest text-indigo-200 bg-black/80 px-1 py-0.2 rounded border border-indigo-500/50">
+              💤 SLEEP CYCLE
+            </span>
+            <span className="text-[6.5px] font-mono text-cyan-300 animate-ping mt-0.5">
+              RECHARGING
+            </span>
+          </div>
+        )}
 
         {/* Live Heart Rate Telemetry Pip (Bottom Left) */}
         <div
@@ -1130,7 +1442,96 @@ interface OfficerDossierModalProps {
   onSendCommand?: (command: string) => void;
   activeTopic?: IdleTopic | null;
   onSelectTopic?: (topic: IdleTopic) => void;
+  logs?: CrewLogEntry[];
+  onAddLog?: (entry: Omit<CrewLogEntry, 'id' | 'timestamp'>) => void;
 }
+
+const DEFAULT_LOGS_BY_OFFICER: Record<CharacterType, CrewLogEntry[]> = {
+  Jax: [
+    {
+      id: 'jax-hist-1',
+      officer: 'Jax',
+      type: 'milestone',
+      timestamp: 'CYCLE 00:00:10',
+      title: 'Commissioned as Chief Starship Engineer',
+      detail: 'Lt. Jax Thorne officially assigned to Sector Null deep survey expedition following Starfleet reactor certification with honors.',
+      badge: 'COMMISSIONING',
+      severity: 'info',
+    },
+    {
+      id: 'jax-hist-2',
+      officer: 'Jax',
+      type: 'milestone',
+      timestamp: 'CYCLE 00:01:25',
+      title: 'Plasma Injector Bypass Tuned',
+      detail: 'Re-routed auxiliary cooling conduits around starboard impulse coils, lowering idle manifold thermal backpressure by 16%.',
+      badge: 'TECH UPGRADE',
+      severity: 'success',
+    },
+    {
+      id: 'jax-hist-3',
+      officer: 'Jax',
+      type: 'emotion_shift',
+      timestamp: 'CYCLE 00:02:15',
+      title: 'Elevated Stress in Graviton Turbulence',
+      detail: 'Biometrics recorded pulse jump to 118 BPM during high-G turbulence. Micro-fractures detected in hull strut C-4.',
+      badge: 'STRESS SPIKE',
+      severity: 'warning',
+    },
+    {
+      id: 'jax-hist-4',
+      officer: 'Jax',
+      type: 'conversation',
+      timestamp: 'CYCLE 00:02:40',
+      title: 'Bridge Comms: Hull Reinforcement Request',
+      detail: '"Nanite repair lasers primed and hot! Just give the word and I\'ll weld these armor plates together, Cap!"',
+      badge: 'RADIO COMMS',
+      severity: 'info',
+    },
+  ],
+  Elara: [
+    {
+      id: 'elara-hist-1',
+      officer: 'Elara',
+      type: 'milestone',
+      timestamp: 'CYCLE 00:00:10',
+      title: 'Appointed Chief Science Officer',
+      detail: 'Dr. Elara Vance appointed Chief Science Officer. Oxford Orbital Doctorate in Astrometric Singularity Dynamics.',
+      badge: 'ASSIGNMENT',
+      severity: 'info',
+    },
+    {
+      id: 'elara-hist-2',
+      officer: 'Elara',
+      type: 'milestone',
+      timestamp: 'CYCLE 00:01:10',
+      title: 'Tachyon Grid Harmonic Alignment',
+      detail: 'Harmonized deflector dish array with local cosmic background radiation to optimize tachyon flux harvesting.',
+      badge: 'SENSOR CALIBRATION',
+      severity: 'success',
+    },
+    {
+      id: 'elara-hist-3',
+      officer: 'Elara',
+      type: 'emotion_shift',
+      timestamp: 'CYCLE 00:01:55',
+      title: 'Astrometric Fascination Peak',
+      detail: 'Neural telemetry recorded pupil dilation and curiosity surge to 86% upon registering non-baryonic subspace fluctuations.',
+      badge: 'CURIOSITY 86%',
+      severity: 'info',
+    },
+    {
+      id: 'elara-hist-4',
+      officer: 'Elara',
+      type: 'conversation',
+      timestamp: 'CYCLE 00:02:20',
+      title: 'Bridge Comms: Telemetry Advisory',
+      detail: '"Astrometric arrays have locked onto anomalous interference patterns. Deflector harmonics remain within safe operational margins."',
+      badge: 'RADIO COMMS',
+      severity: 'info',
+    },
+  ],
+};
 
 export const OfficerDossierModal: React.FC<OfficerDossierModalProps> = ({
   isOpen,
@@ -1140,27 +1541,46 @@ export const OfficerDossierModal: React.FC<OfficerDossierModalProps> = ({
   onSendCommand,
   activeTopic,
   onSelectTopic,
+  logs = [],
+  onAddLog,
 }) => {
+  const [activeTab, setActiveTab] = useState<'biometrics' | 'crew_log'>('biometrics');
+  const [logCategoryFilter, setLogCategoryFilter] = useState<'all' | 'emotion_shift' | 'milestone' | 'conversation'>('all');
   const [previewEmotion, setPreviewEmotion] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [imagenStatus, setImagenStatus] = useState<string | null>(null);
+  const [localLogs, setLocalLogs] = useState<CrewLogEntry[]>([]);
+  const [newNoteTitle, setNewNoteTitle] = useState('');
+  const [newNoteDetail, setNewNoteDetail] = useState('');
+  const [newNoteType, setNewNoteType] = useState<'emotion_shift' | 'milestone' | 'conversation'>('milestone');
+  const [isAddingNote, setIsAddingNote] = useState(false);
 
   if (!isOpen) return null;
 
   const isJax = officer === 'Jax';
 
+  const currentFatigue = isJax ? (crew.jaxFatigue ?? 0) : (crew.elaraFatigue ?? 0);
+
   const jaxCurrentEmotion =
     crew.jaxStatus === 'Panicking' || crew.jaxStress > 70
       ? 'Panicking'
+      : crew.jaxStatus === 'Exhausted' || currentFatigue >= 75
+      ? 'Exhausted'
       : crew.jaxStatus === 'Stressed' || crew.jaxStress > 35
       ? 'Stressed'
+      : crew.jaxStatus === 'Fatigued' || currentFatigue >= 45
+      ? 'Fatigued'
       : 'Nominal';
 
   const elaraCurrentEmotion =
     crew.elaraStatus === 'Alarmed' || (crew.elaraStress ?? 12) > 65
       ? 'Alarmed'
+      : crew.elaraStatus === 'Exhausted' || currentFatigue >= 75
+      ? 'Exhausted'
       : crew.elaraCuriosity > 75
       ? 'Fascinated'
+      : crew.elaraStatus === 'Weary' || currentFatigue >= 45
+      ? 'Weary'
       : crew.elaraCuriosity > 45
       ? 'Intrigued'
       : 'Analytical';
@@ -1171,6 +1591,24 @@ export const OfficerDossierModal: React.FC<OfficerDossierModalProps> = ({
     ? Math.round(68 + (stress / 100) * 88)
     : Math.round(62 + (stress / 100) * 78);
 
+  // Combine default logs, passed props logs, and locally created entries
+  const officerDefaultLogs = DEFAULT_LOGS_BY_OFFICER[officer] || [];
+  const officerPropLogs = (logs || []).filter((l) => l.officer === officer || l.officer === 'All');
+  
+  // Merge and deduplicate by id
+  const logMap = new Map<string, CrewLogEntry>();
+  [...officerDefaultLogs, ...officerPropLogs, ...localLogs].forEach((l) => logMap.set(l.id, l));
+  const combinedLogs = Array.from(logMap.values());
+
+  const countEmotions = combinedLogs.filter((l) => l.type === 'emotion_shift').length;
+  const countMilestones = combinedLogs.filter((l) => l.type === 'milestone').length;
+  const countConversations = combinedLogs.filter((l) => l.type === 'conversation').length;
+
+  const filteredLogs = combinedLogs.filter((entry) => {
+    if (logCategoryFilter === 'all') return true;
+    return entry.type === logCategoryFilter;
+  });
+
   const handleTestHail = () => {
     if (onSendCommand) {
       if (isJax) {
@@ -1180,6 +1618,36 @@ export const OfficerDossierModal: React.FC<OfficerDossierModalProps> = ({
       }
       onClose();
     }
+  };
+
+  const handleCreateNote = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newNoteTitle.trim()) return;
+    const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const newEntry: CrewLogEntry = {
+      id: `local-note-${Date.now()}`,
+      officer,
+      type: newNoteType,
+      timestamp: time,
+      title: newNoteTitle.trim(),
+      detail: newNoteDetail.trim() || 'Captain entry logged in official mission dossier.',
+      badge: "CAPTAIN'S LOG",
+      severity: newNoteType === 'emotion_shift' ? 'warning' : 'success',
+    };
+    setLocalLogs((prev) => [newEntry, ...prev]);
+    if (onAddLog) {
+      onAddLog({
+        officer,
+        type: newNoteType,
+        title: newNoteTitle.trim(),
+        detail: newNoteDetail.trim() || 'Captain entry logged in official mission dossier.',
+        badge: "CAPTAIN'S LOG",
+        severity: newNoteType === 'emotion_shift' ? 'warning' : 'success',
+      });
+    }
+    setNewNoteTitle('');
+    setNewNoteDetail('');
+    setIsAddingNote(false);
   };
 
   const handleGenerateImagen = async () => {
@@ -1222,7 +1690,7 @@ export const OfficerDossierModal: React.FC<OfficerDossierModalProps> = ({
             <Activity className="w-5 h-5 text-cyan-400 animate-pulse" />
             <div>
               <h2 className="text-sm font-bold font-display uppercase tracking-widest text-slate-100 flex items-center gap-2">
-                <span>BRIDGE OFFICER BIOMETRIC DOSSIER</span>
+                <span>BRIDGE OFFICER DOSSIER & LOG</span>
                 <span className="text-[10px] font-terminal px-2 py-0.5 rounded bg-cyan-950 border border-cyan-700/50 text-cyan-300">
                   // {officer.toUpperCase()}
                 </span>
@@ -1236,14 +1704,52 @@ export const OfficerDossierModal: React.FC<OfficerDossierModalProps> = ({
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors"
+            className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Modal Body */}
-        <div className="p-5 overflow-y-auto space-y-4">
+        {/* Modal Sub-Header Tabs */}
+        <div className="flex items-center justify-between px-5 py-2 border-b border-cyan-900/40 bg-[#070b16]">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setActiveTab('biometrics')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-terminal font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                activeTab === 'biometrics'
+                  ? 'bg-cyan-950 text-cyan-300 border border-cyan-700/70 shadow-sm shadow-cyan-900/40'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/60'
+              }`}
+            >
+              <Activity className="w-3.5 h-3.5" />
+              <span>BIOMETRIC DOSSIER</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('crew_log')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-terminal font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                activeTab === 'crew_log'
+                  ? 'bg-indigo-950 text-indigo-300 border border-indigo-700/70 shadow-sm shadow-indigo-900/40'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/60'
+              }`}
+            >
+              <History className="w-3.5 h-3.5" />
+              <span>CREW LOG</span>
+              <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-indigo-900/90 text-indigo-200 font-mono font-bold">
+                {combinedLogs.length}
+              </span>
+            </button>
+          </div>
+
+          <div className="hidden sm:flex items-center gap-2 text-[11px] font-terminal text-slate-400">
+            <span>FATIGUE: <strong className={currentFatigue >= 70 ? 'text-purple-400' : currentFatigue >= 40 ? 'text-amber-400' : 'text-emerald-400'}>{Math.round(currentFatigue)}%</strong></span>
+            <span>•</span>
+            <span>STRESS: <strong className={stress > 60 ? 'text-rose-400' : stress > 30 ? 'text-amber-400' : 'text-emerald-400'}>{stress}%</strong></span>
+          </div>
+        </div>
+
+        {/* Tab 1: Biometric Dossier */}
+        {activeTab === 'biometrics' && (
+          <div className="p-5 overflow-y-auto space-y-4 flex-1">
           {/* Top Section: Large Portrait & Biometrics Card */}
           <div className="flex flex-col sm:flex-row items-center gap-5 p-4 rounded-xl bg-slate-950/80 border border-slate-800">
             {/* The Expressive 2D Portrait at Large 120px Size */}
@@ -1252,6 +1758,7 @@ export const OfficerDossierModal: React.FC<OfficerDossierModalProps> = ({
                 <JaxPortrait
                   stress={stress}
                   status={crew.jaxStatus}
+                  fatigue={crew.jaxFatigue}
                   size={120}
                   overrideEmotion={previewEmotion as any}
                   interactive={false}
@@ -1261,6 +1768,7 @@ export const OfficerDossierModal: React.FC<OfficerDossierModalProps> = ({
                   stress={stress}
                   curiosity={crew.elaraCuriosity}
                   status={crew.elaraStatus}
+                  fatigue={crew.elaraFatigue}
                   size={120}
                   overrideEmotion={previewEmotion as any}
                   interactive={false}
@@ -1286,7 +1794,9 @@ export const OfficerDossierModal: React.FC<OfficerDossierModalProps> = ({
                   className={`text-xs font-terminal px-2 py-1 rounded font-bold uppercase border ${
                     activeEmotion === 'Panicking' || activeEmotion === 'Alarmed'
                       ? 'bg-rose-950 text-rose-300 border-rose-500 animate-pulse'
-                      : activeEmotion === 'Stressed'
+                      : activeEmotion === 'Exhausted'
+                      ? 'bg-purple-950 text-purple-300 border-purple-500 animate-pulse'
+                      : activeEmotion === 'Stressed' || activeEmotion === 'Fatigued' || activeEmotion === 'Weary'
                       ? 'bg-amber-950 text-amber-300 border-amber-500'
                       : 'bg-emerald-950 text-emerald-300 border-emerald-500'
                   }`}
@@ -1327,6 +1837,37 @@ export const OfficerDossierModal: React.FC<OfficerDossierModalProps> = ({
                       style={{ width: `${stress}%` }}
                     />
                   </div>
+                </div>
+              </div>
+
+              {/* Fatigue Biometric Readout */}
+              <div className="p-2 rounded bg-slate-900 border border-slate-800 text-xs font-terminal">
+                <div className="flex items-center justify-between text-[10px] text-slate-400 mb-1">
+                  <div className="flex items-center gap-1 text-purple-400">
+                    <Moon className="w-3 h-3" />
+                    <span>FATIGUE & SLEEP DEFICIT</span>
+                  </div>
+                  <span className={`font-mono font-bold ${
+                    (isJax ? crew.jaxFatigue : crew.elaraFatigue) >= 70
+                      ? 'text-purple-400'
+                      : (isJax ? crew.jaxFatigue : crew.elaraFatigue) >= 35
+                      ? 'text-amber-400'
+                      : 'text-emerald-400'
+                  }`}>
+                    {Math.round(isJax ? crew.jaxFatigue : crew.elaraFatigue)}%
+                  </span>
+                </div>
+                <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all duration-500 ${
+                      (isJax ? crew.jaxFatigue : crew.elaraFatigue) >= 70
+                        ? 'bg-purple-500'
+                        : (isJax ? crew.jaxFatigue : crew.elaraFatigue) >= 35
+                        ? 'bg-amber-400'
+                        : 'bg-emerald-400'
+                    }`}
+                    style={{ width: `${Math.min(100, Math.round(isJax ? crew.jaxFatigue : crew.elaraFatigue))}%` }}
+                  />
                 </div>
               </div>
 
@@ -1430,6 +1971,26 @@ export const OfficerDossierModal: React.FC<OfficerDossierModalProps> = ({
                     Nominal (Focused Smirk)
                   </button>
                   <button
+                    onClick={() => setPreviewEmotion('Fatigued')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-terminal border transition-all ${
+                      activeEmotion === 'Fatigued'
+                        ? 'bg-amber-950 border-amber-500 text-amber-300 shadow-md'
+                        : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    Fatigued (Eyelid Droop & Low Brows)
+                  </button>
+                  <button
+                    onClick={() => setPreviewEmotion('Exhausted')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-terminal border transition-all ${
+                      activeEmotion === 'Exhausted'
+                        ? 'bg-purple-950 border-purple-500 text-purple-300 shadow-md animate-pulse'
+                        : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    Exhausted (Heavy Droop & Dark Bags)
+                  </button>
+                  <button
                     onClick={() => setPreviewEmotion('Stressed')}
                     className={`px-3 py-1.5 rounded-lg text-xs font-terminal border transition-all ${
                       activeEmotion === 'Stressed'
@@ -1461,6 +2022,26 @@ export const OfficerDossierModal: React.FC<OfficerDossierModalProps> = ({
                     }`}
                   >
                     Analytical (Stoic & Scanning)
+                  </button>
+                  <button
+                    onClick={() => setPreviewEmotion('Weary')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-terminal border transition-all ${
+                      activeEmotion === 'Weary'
+                        ? 'bg-amber-950 border-amber-500 text-amber-300 shadow-md'
+                        : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    Weary (Subdued Visor & Flat Gaze)
+                  </button>
+                  <button
+                    onClick={() => setPreviewEmotion('Exhausted')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-terminal border transition-all ${
+                      activeEmotion === 'Exhausted'
+                        ? 'bg-purple-950 border-purple-500 text-purple-300 shadow-md animate-pulse'
+                        : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    Exhausted (Half-Closed Eye & Violet Shadow)
                   </button>
                   <button
                     onClick={() => setPreviewEmotion('Intrigued')}
@@ -1519,16 +2100,229 @@ export const OfficerDossierModal: React.FC<OfficerDossierModalProps> = ({
             )}
           </div>
         </div>
+        )}
+
+        {/* Tab 2: Crew Log & Chronological History */}
+        {activeTab === 'crew_log' && (
+          <div className="p-5 overflow-y-auto space-y-4 flex-1">
+            {/* Category Filter Chips & Add Note Button */}
+            <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-xl bg-slate-950/80 border border-slate-800">
+              <div className="flex flex-wrap items-center gap-1.5 text-xs font-terminal">
+                <span className="text-[10px] text-slate-400 uppercase tracking-wider mr-1 flex items-center gap-1">
+                  <Filter className="w-3 h-3 text-cyan-400" />
+                  <span>FILTER:</span>
+                </span>
+                <button
+                  onClick={() => setLogCategoryFilter('all')}
+                  className={`px-2.5 py-1 rounded text-xs transition-colors cursor-pointer ${
+                    logCategoryFilter === 'all'
+                      ? 'bg-cyan-900/80 text-cyan-200 border border-cyan-500/60 font-bold'
+                      : 'bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800'
+                  }`}
+                >
+                  ALL ({combinedLogs.length})
+                </button>
+                <button
+                  onClick={() => setLogCategoryFilter('emotion_shift')}
+                  className={`px-2.5 py-1 rounded text-xs transition-colors cursor-pointer ${
+                    logCategoryFilter === 'emotion_shift'
+                      ? 'bg-amber-900/80 text-amber-200 border border-amber-500/60 font-bold'
+                      : 'bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800'
+                  }`}
+                >
+                  EMOTION SHIFTS ({countEmotions})
+                </button>
+                <button
+                  onClick={() => setLogCategoryFilter('milestone')}
+                  className={`px-2.5 py-1 rounded text-xs transition-colors cursor-pointer ${
+                    logCategoryFilter === 'milestone'
+                      ? 'bg-emerald-900/80 text-emerald-200 border border-emerald-500/60 font-bold'
+                      : 'bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800'
+                  }`}
+                >
+                  MILESTONES ({countMilestones})
+                </button>
+                <button
+                  onClick={() => setLogCategoryFilter('conversation')}
+                  className={`px-2.5 py-1 rounded text-xs transition-colors cursor-pointer ${
+                    logCategoryFilter === 'conversation'
+                      ? 'bg-indigo-900/80 text-indigo-200 border border-indigo-500/60 font-bold'
+                      : 'bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800'
+                  }`}
+                >
+                  COMMS ({countConversations})
+                </button>
+              </div>
+
+              <button
+                onClick={() => setIsAddingNote((v) => !v)}
+                className="px-2.5 py-1 rounded bg-slate-900 hover:bg-slate-800 border border-slate-700 text-cyan-300 text-xs font-terminal flex items-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <PlusCircle className="w-3.5 h-3.5 text-cyan-400" />
+                <span>{isAddingNote ? 'CANCEL NOTE' : '+ CAPTAIN LOG'}</span>
+              </button>
+            </div>
+
+            {/* Inline Add Note Form */}
+            {isAddingNote && (
+              <form onSubmit={handleCreateNote} className="p-3.5 rounded-xl bg-cyan-950/30 border border-cyan-800/60 space-y-2.5 animate-fade-in">
+                <div className="flex items-center justify-between text-xs font-terminal">
+                  <span className="font-bold text-cyan-300 uppercase tracking-wide flex items-center gap-1.5">
+                    <Bookmark className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>NEW CAPTAIN DOSSIER LOG ENTRY</span>
+                  </span>
+                  <select
+                    value={newNoteType}
+                    onChange={(e) => setNewNoteType(e.target.value as any)}
+                    className="bg-slate-900 border border-cyan-700/60 text-cyan-200 rounded px-2 py-0.5 text-xs font-terminal outline-none cursor-pointer"
+                  >
+                    <option value="milestone">Mission Milestone</option>
+                    <option value="emotion_shift">Emotional Assessment</option>
+                    <option value="conversation">Bridge Comms Memo</option>
+                  </select>
+                </div>
+
+                <input
+                  type="text"
+                  placeholder="Log Title / Subject (e.g., Commendation for Hull Repairs under Fire)"
+                  value={newNoteTitle}
+                  onChange={(e) => setNewNoteTitle(e.target.value)}
+                  className="w-full px-3 py-1.5 rounded-lg bg-slate-900/90 border border-cyan-800/70 text-slate-100 placeholder-slate-500 text-xs font-terminal focus:outline-none focus:border-cyan-400"
+                />
+
+                <textarea
+                  placeholder="Detailed observation, psychological assessment, or transcript quote..."
+                  value={newNoteDetail}
+                  onChange={(e) => setNewNoteDetail(e.target.value)}
+                  rows={2}
+                  className="w-full px-3 py-1.5 rounded-lg bg-slate-900/90 border border-cyan-800/70 text-slate-100 placeholder-slate-500 text-xs font-terminal focus:outline-none focus:border-cyan-400 resize-none"
+                />
+
+                <div className="flex justify-end gap-2 text-xs font-terminal">
+                  <button
+                    type="button"
+                    onClick={() => setIsAddingNote(false)}
+                    className="px-3 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={!newNoteTitle.trim()}
+                    className="px-3 py-1 rounded bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>RECORD ENTRY</span>
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {/* Chronological Timeline List */}
+            <div className="relative pl-6 space-y-3.5 before:absolute before:left-2.5 before:top-2 before:bottom-2 before:w-0.5 before:bg-gradient-to-b before:from-cyan-500/60 before:via-indigo-500/40 before:to-transparent">
+              {filteredLogs.length === 0 ? (
+                <div className="p-8 rounded-xl bg-slate-950/60 border border-slate-800/80 text-center font-terminal">
+                  <p className="text-xs text-slate-400">NO LOG ENTRIES RECORDED UNDER THIS FILTER CATEGORY.</p>
+                  <button
+                    onClick={() => setLogCategoryFilter('all')}
+                    className="mt-2 text-[11px] text-cyan-400 underline hover:text-cyan-300 cursor-pointer"
+                  >
+                    Reset to All Logs
+                  </button>
+                </div>
+              ) : (
+                filteredLogs.map((entry) => {
+                  const isEmotion = entry.type === 'emotion_shift';
+                  const isMilestone = entry.type === 'milestone';
+                  const isComms = entry.type === 'conversation';
+
+                  let iconNode = <Clock className="w-3.5 h-3.5 text-cyan-400" />;
+                  let dotColor = 'bg-cyan-400 border-cyan-600';
+                  let cardBorder = 'border-slate-800 bg-slate-950/70';
+                  let badgeColor = 'bg-cyan-950 text-cyan-300 border-cyan-700/60';
+
+                  if (isEmotion) {
+                    iconNode = <Activity className="w-3.5 h-3.5 text-amber-400" />;
+                    dotColor = entry.severity === 'critical' ? 'bg-rose-500 border-rose-700' : 'bg-amber-400 border-amber-600';
+                    cardBorder = entry.severity === 'critical' ? 'border-rose-900/50 bg-rose-950/20' : 'border-amber-900/40 bg-amber-950/15';
+                    badgeColor = entry.severity === 'critical' ? 'bg-rose-950 text-rose-300 border-rose-700' : 'bg-amber-950 text-amber-300 border-amber-700/60';
+                  } else if (isMilestone) {
+                    iconNode = <Award className="w-3.5 h-3.5 text-emerald-400" />;
+                    dotColor = 'bg-emerald-400 border-emerald-600';
+                    cardBorder = 'border-emerald-900/40 bg-emerald-950/15';
+                    badgeColor = 'bg-emerald-950 text-emerald-300 border-emerald-700/60';
+                  } else if (isComms) {
+                    iconNode = <Radio className="w-3.5 h-3.5 text-indigo-400" />;
+                    dotColor = 'bg-indigo-400 border-indigo-600';
+                    cardBorder = 'border-indigo-900/40 bg-indigo-950/15';
+                    badgeColor = 'bg-indigo-950 text-indigo-300 border-indigo-700/60';
+                  }
+
+                  return (
+                    <div key={entry.id} className="relative group">
+                      {/* Timeline node dot */}
+                      <div className={`absolute -left-6 top-2.5 w-3 h-3 rounded-full border-2 ${dotColor} shadow-md`} />
+
+                      {/* Card Content */}
+                      <div className={`p-3 rounded-xl border ${cardBorder} transition-all hover:border-slate-700 shadow-sm space-y-1.5`}>
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <div className="p-1 rounded bg-black/40 border border-slate-800">
+                              {iconNode}
+                            </div>
+                            <span className="text-xs font-bold font-display uppercase tracking-wider text-slate-100">
+                              {entry.title}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            {entry.badge && (
+                              <span className={`text-[10px] font-terminal px-1.5 py-0.5 rounded border uppercase font-semibold ${badgeColor}`}>
+                                {entry.badge}
+                              </span>
+                            )}
+                            <span className="text-[10px] font-mono text-slate-500 flex items-center gap-1">
+                              <Clock className="w-2.5 h-2.5 text-slate-600" />
+                              <span>{entry.timestamp}</span>
+                            </span>
+                          </div>
+                        </div>
+
+                        <p className={`text-xs font-terminal leading-relaxed ${isComms ? 'italic text-indigo-200/90 bg-black/40 p-2 rounded border border-indigo-900/30' : 'text-slate-300'}`}>
+                          {entry.detail}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Modal Footer */}
-        <div className="px-5 py-3 border-t border-cyan-900/50 bg-[#070b14] flex items-center justify-between">
-          <button
-            onClick={handleTestHail}
-            className="px-3.5 py-1.5 rounded-lg bg-cyan-950 hover:bg-cyan-900 border border-cyan-700/60 text-cyan-300 text-xs font-terminal font-semibold flex items-center gap-2 transition-colors cursor-pointer"
-          >
-            <Radio className="w-3.5 h-3.5" />
-            <span>HAIL OFFICER & ASK STATUS</span>
-          </button>
+        <div className="px-5 py-3 border-t border-cyan-900/50 bg-[#070b14] flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleTestHail}
+              className="px-3.5 py-1.5 rounded-lg bg-cyan-950 hover:bg-cyan-900 border border-cyan-700/60 text-cyan-300 text-xs font-terminal font-semibold flex items-center gap-2 transition-colors cursor-pointer"
+            >
+              <Radio className="w-3.5 h-3.5" />
+              <span>HAIL OFFICER & ASK STATUS</span>
+            </button>
+            {onSendCommand && (
+              <button
+                onClick={() => {
+                  onSendCommand('Initiate crew rest and sleep cycle to restore fatigue');
+                  onClose();
+                }}
+                className="px-3 py-1.5 rounded-lg bg-indigo-950 hover:bg-indigo-900 border border-indigo-700/60 text-indigo-300 text-xs font-terminal font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+                title="Send 'rest/sleep cycle' command to reset crew fatigue"
+              >
+                <Moon className="w-3.5 h-3.5" />
+                <span>REST / SLEEP CYCLE</span>
+              </button>
+            )}
+          </div>
           <button
             onClick={onClose}
             className="px-4 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-terminal transition-colors"

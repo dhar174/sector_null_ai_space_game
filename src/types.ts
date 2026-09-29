@@ -40,7 +40,8 @@ export interface CrewAction {
     | 'change_shields' 
     | 'scan_anomaly' 
     | 'repair_engines'
-    | 'evasive_burn';
+    | 'evasive_burn'
+    | 'rest_cycle';
   value: number;
   reason?: string;
 }
@@ -93,10 +94,14 @@ export interface ShipState {
 
 export interface CrewStatus {
   jaxStress: number; // 0-100
-  jaxStatus: 'Nominal' | 'Stressed' | 'Panicking' | 'Focused';
+  jaxStatus: 'Nominal' | 'Stressed' | 'Panicking' | 'Focused' | 'Fatigued' | 'Exhausted';
+  jaxFatigue: number; // 0-100 (slowly fills during long sessions, resets on rest/sleep cycle)
   elaraStress: number; // 0-100
   elaraCuriosity: number; // 0-100
-  elaraStatus: 'Analytical' | 'Intrigued' | 'Fascinated' | 'Alarmed';
+  elaraStatus: 'Analytical' | 'Intrigued' | 'Fascinated' | 'Alarmed' | 'Weary' | 'Exhausted';
+  elaraFatigue: number; // 0-100 (slowly fills during long sessions, resets on rest/sleep cycle)
+  isRestCycleActive?: boolean;
+  lastRestTimestamp?: number;
 }
 
 export interface SettingsState {
@@ -156,4 +161,15 @@ export interface TacticalTarget {
   edgeX?: number;
   edgeY?: number;
   edgeAngle?: number;
+}
+
+export interface CrewLogEntry {
+  id: string;
+  officer: 'Jax' | 'Elara' | 'All';
+  type: 'emotion_shift' | 'milestone' | 'conversation';
+  timestamp: string;
+  title: string;
+  detail: string;
+  badge?: string;
+  severity?: 'info' | 'warning' | 'critical' | 'success';
 }
