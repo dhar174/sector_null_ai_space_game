@@ -13,7 +13,7 @@ const config = source.slice(start, end);
 
 assert.doesNotMatch(
   config,
-  /\b(?:temperature|topP|topK|thinkingBudget|thinking_budget|top_p|top_k)\s*:/,
+  /\b(?:temperature|topP|topK|thinkingBudget|thinking_budget|top_p|top_k)["']?\s*:/,
   "Gemini config contains an unsupported sampling or thinking-budget field",
 );
 assert.match(config, /responseMimeType\s*:\s*["']application\/json["']/);
