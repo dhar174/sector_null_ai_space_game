@@ -282,7 +282,6 @@ Determine the routed officer, classify the intent ("action", "query", or "conver
 
     const config = {
       systemInstruction,
-      temperature: 0.7,
       responseMimeType: "application/json",
       responseSchema: {
         type: Type.OBJECT,
