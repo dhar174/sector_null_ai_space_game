@@ -162,11 +162,19 @@ export interface TacticalTarget {
   edgeY?: number;
   edgeAngle?: number;
 }
+export type CrewLogType =
+  | 'emotion_shift'
+  | 'milestone'
+  | 'conversation'
+  | 'communication'
+  | 'Communication'
+  | 'Emotional Shift'
+  | 'Milestone';
 
 export interface CrewLogEntry {
   id: string;
   officer: 'Jax' | 'Elara' | 'All';
-  type: 'emotion_shift' | 'milestone' | 'conversation';
+  type: CrewLogType;
   timestamp: string;
   title: string;
   detail: string;

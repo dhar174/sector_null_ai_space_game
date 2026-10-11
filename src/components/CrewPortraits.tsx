@@ -1533,6 +1533,19 @@ const DEFAULT_LOGS_BY_OFFICER: Record<CharacterType, CrewLogEntry[]> = {
   ],
 };
 
+export type LogFilterCategory = 'all' | 'Communication' | 'Emotional Shift' | 'Milestone';
+
+export function normalizeCrewLogType(type: string): 'Communication' | 'Emotional Shift' | 'Milestone' {
+  const norm = (type || '').toLowerCase().replace(/[\s_-]+/g, '');
+  if (norm.includes('convers') || norm.includes('communicat') || norm.includes('comms') || norm.includes('radio')) {
+    return 'Communication';
+  }
+  if (norm.includes('emot') || norm.includes('shift') || norm.includes('stress') || norm.includes('psych')) {
+    return 'Emotional Shift';
+  }
+  return 'Milestone';
+}
+
 export const OfficerDossierModal: React.FC<OfficerDossierModalProps> = ({
   isOpen,
   onClose,
@@ -1545,14 +1558,14 @@ export const OfficerDossierModal: React.FC<OfficerDossierModalProps> = ({
   onAddLog,
 }) => {
   const [activeTab, setActiveTab] = useState<'biometrics' | 'crew_log'>('biometrics');
-  const [logCategoryFilter, setLogCategoryFilter] = useState<'all' | 'emotion_shift' | 'milestone' | 'conversation'>('all');
+  const [logCategoryFilter, setLogCategoryFilter] = useState<LogFilterCategory>('all');
   const [previewEmotion, setPreviewEmotion] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [imagenStatus, setImagenStatus] = useState<string | null>(null);
   const [localLogs, setLocalLogs] = useState<CrewLogEntry[]>([]);
   const [newNoteTitle, setNewNoteTitle] = useState('');
   const [newNoteDetail, setNewNoteDetail] = useState('');
-  const [newNoteType, setNewNoteType] = useState<'emotion_shift' | 'milestone' | 'conversation'>('milestone');
+  const [newNoteType, setNewNoteType] = useState<CrewLogEntry['type']>('milestone');
   const [isAddingNote, setIsAddingNote] = useState(false);
 
   if (!isOpen) return null;
@@ -1600,13 +1613,23 @@ export const OfficerDossierModal: React.FC<OfficerDossierModalProps> = ({
   [...officerDefaultLogs, ...officerPropLogs, ...localLogs].forEach((l) => logMap.set(l.id, l));
   const combinedLogs = Array.from(logMap.values());
 
-  const countEmotions = combinedLogs.filter((l) => l.type === 'emotion_shift').length;
-  const countMilestones = combinedLogs.filter((l) => l.type === 'milestone').length;
-  const countConversations = combinedLogs.filter((l) => l.type === 'conversation').length;
+  const countCommunication = combinedLogs.filter(
+    (l) => normalizeCrewLogType(l.type) === 'Communication'
+  ).length;
+  const countEmotionalShift = combinedLogs.filter(
+    (l) => normalizeCrewLogType(l.type) === 'Emotional Shift'
+  ).length;
+  const countMilestone = combinedLogs.filter(
+    (l) => normalizeCrewLogType(l.type) === 'Milestone'
+  ).length;
+
+  const handleToggleFilter = (filterType: 'Communication' | 'Emotional Shift' | 'Milestone') => {
+    setLogCategoryFilter((prev) => (prev === filterType ? 'all' : filterType));
+  };
 
   const filteredLogs = combinedLogs.filter((entry) => {
     if (logCategoryFilter === 'all') return true;
-    return entry.type === logCategoryFilter;
+    return normalizeCrewLogType(entry.type) === logCategoryFilter;
   });
 
   const handleTestHail = () => {
@@ -2107,50 +2130,80 @@ export const OfficerDossierModal: React.FC<OfficerDossierModalProps> = ({
           <div className="p-5 overflow-y-auto space-y-4 flex-1">
             {/* Category Filter Chips & Add Note Button */}
             <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-xl bg-slate-950/80 border border-slate-800">
-              <div className="flex flex-wrap items-center gap-1.5 text-xs font-terminal">
-                <span className="text-[10px] text-slate-400 uppercase tracking-wider mr-1 flex items-center gap-1">
+              <div className="flex flex-wrap items-center gap-1.5 text-xs font-terminal" role="toolbar" aria-label="Crew Log Filter Controls">
+                <span className="text-[10px] text-slate-400 uppercase tracking-wider mr-1 flex items-center gap-1 font-semibold">
                   <Filter className="w-3 h-3 text-cyan-400" />
                   <span>FILTER:</span>
                 </span>
                 <button
+                  type="button"
                   onClick={() => setLogCategoryFilter('all')}
-                  className={`px-2.5 py-1 rounded text-xs transition-colors cursor-pointer ${
+                  data-filter="all"
+                  data-testid="filter-all"
+                  aria-pressed={logCategoryFilter === 'all'}
+                  aria-label="Show All Logs"
+                  className={`px-2.5 py-1 rounded text-xs flex items-center gap-1.5 transition-all cursor-pointer font-terminal ${
                     logCategoryFilter === 'all'
-                      ? 'bg-cyan-900/80 text-cyan-200 border border-cyan-500/60 font-bold'
+                      ? 'bg-cyan-900/90 text-cyan-200 border border-cyan-400 shadow-[0_0_10px_rgba(6,182,212,0.3)] font-bold'
                       : 'bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800'
                   }`}
                 >
-                  ALL ({combinedLogs.length})
+                  <span>All</span>
+                  <span className="text-[10px] opacity-80 font-mono">({combinedLogs.length})</span>
                 </button>
                 <button
-                  onClick={() => setLogCategoryFilter('emotion_shift')}
-                  className={`px-2.5 py-1 rounded text-xs transition-colors cursor-pointer ${
-                    logCategoryFilter === 'emotion_shift'
-                      ? 'bg-amber-900/80 text-amber-200 border border-amber-500/60 font-bold'
-                      : 'bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800'
+                  type="button"
+                  onClick={() => handleToggleFilter('Communication')}
+                  data-filter="Communication"
+                  data-testid="filter-communication"
+                  aria-pressed={logCategoryFilter === 'Communication'}
+                  aria-label="Toggle Communication Logs"
+                  title="Toggle Communication logs"
+                  className={`px-2.5 py-1 rounded text-xs flex items-center gap-1.5 transition-all cursor-pointer font-terminal ${
+                    logCategoryFilter === 'Communication'
+                      ? 'bg-indigo-900/90 text-indigo-200 border border-indigo-400 shadow-[0_0_10px_rgba(99,102,241,0.3)] font-bold'
+                      : 'bg-slate-900 text-slate-400 hover:text-indigo-200 border border-slate-800 hover:border-indigo-900/60'
                   }`}
                 >
-                  EMOTION SHIFTS ({countEmotions})
+                  <Radio className="w-3 h-3 text-indigo-400" />
+                  <span>Communication</span>
+                  <span className="text-[10px] opacity-80 font-mono">({countCommunication})</span>
                 </button>
                 <button
-                  onClick={() => setLogCategoryFilter('milestone')}
-                  className={`px-2.5 py-1 rounded text-xs transition-colors cursor-pointer ${
-                    logCategoryFilter === 'milestone'
-                      ? 'bg-emerald-900/80 text-emerald-200 border border-emerald-500/60 font-bold'
-                      : 'bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800'
+                  type="button"
+                  onClick={() => handleToggleFilter('Emotional Shift')}
+                  data-filter="Emotional Shift"
+                  data-testid="filter-emotional-shift"
+                  aria-pressed={logCategoryFilter === 'Emotional Shift'}
+                  aria-label="Toggle Emotional Shift Logs"
+                  title="Toggle Emotional Shift logs"
+                  className={`px-2.5 py-1 rounded text-xs flex items-center gap-1.5 transition-all cursor-pointer font-terminal ${
+                    logCategoryFilter === 'Emotional Shift'
+                      ? 'bg-amber-900/90 text-amber-200 border border-amber-400 shadow-[0_0_10px_rgba(245,158,11,0.3)] font-bold'
+                      : 'bg-slate-900 text-slate-400 hover:text-amber-200 border border-slate-800 hover:border-amber-900/60'
                   }`}
                 >
-                  MILESTONES ({countMilestones})
+                  <Activity className="w-3 h-3 text-amber-400" />
+                  <span>Emotional Shift</span>
+                  <span className="text-[10px] opacity-80 font-mono">({countEmotionalShift})</span>
                 </button>
                 <button
-                  onClick={() => setLogCategoryFilter('conversation')}
-                  className={`px-2.5 py-1 rounded text-xs transition-colors cursor-pointer ${
-                    logCategoryFilter === 'conversation'
-                      ? 'bg-indigo-900/80 text-indigo-200 border border-indigo-500/60 font-bold'
-                      : 'bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800'
+                  type="button"
+                  onClick={() => handleToggleFilter('Milestone')}
+                  data-filter="Milestone"
+                  data-testid="filter-milestone"
+                  aria-pressed={logCategoryFilter === 'Milestone'}
+                  aria-label="Toggle Milestone Logs"
+                  title="Toggle Milestone logs"
+                  className={`px-2.5 py-1 rounded text-xs flex items-center gap-1.5 transition-all cursor-pointer font-terminal ${
+                    logCategoryFilter === 'Milestone'
+                      ? 'bg-emerald-900/90 text-emerald-200 border border-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.3)] font-bold'
+                      : 'bg-slate-900 text-slate-400 hover:text-emerald-200 border border-slate-800 hover:border-emerald-900/60'
                   }`}
                 >
-                  COMMS ({countConversations})
+                  <Award className="w-3 h-3 text-emerald-400" />
+                  <span>Milestone</span>
+                  <span className="text-[10px] opacity-80 font-mono">({countMilestone})</span>
                 </button>
               </div>
 
@@ -2176,9 +2229,9 @@ export const OfficerDossierModal: React.FC<OfficerDossierModalProps> = ({
                     onChange={(e) => setNewNoteType(e.target.value as any)}
                     className="bg-slate-900 border border-cyan-700/60 text-cyan-200 rounded px-2 py-0.5 text-xs font-terminal outline-none cursor-pointer"
                   >
-                    <option value="milestone">Mission Milestone</option>
-                    <option value="emotion_shift">Emotional Assessment</option>
-                    <option value="conversation">Bridge Comms Memo</option>
+                    <option value="Milestone">Milestone</option>
+                    <option value="Emotional Shift">Emotional Shift</option>
+                    <option value="Communication">Communication</option>
                   </select>
                 </div>
 
@@ -2222,36 +2275,44 @@ export const OfficerDossierModal: React.FC<OfficerDossierModalProps> = ({
             <div className="relative pl-6 space-y-3.5 before:absolute before:left-2.5 before:top-2 before:bottom-2 before:w-0.5 before:bg-gradient-to-b before:from-cyan-500/60 before:via-indigo-500/40 before:to-transparent">
               {filteredLogs.length === 0 ? (
                 <div className="p-8 rounded-xl bg-slate-950/60 border border-slate-800/80 text-center font-terminal">
-                  <p className="text-xs text-slate-400">NO LOG ENTRIES RECORDED UNDER THIS FILTER CATEGORY.</p>
+                  <p className="text-xs text-slate-400">
+                    NO {logCategoryFilter.toUpperCase()} LOG ENTRIES RECORDED FOR THIS OFFICER.
+                  </p>
                   <button
+                    type="button"
                     onClick={() => setLogCategoryFilter('all')}
                     className="mt-2 text-[11px] text-cyan-400 underline hover:text-cyan-300 cursor-pointer"
                   >
-                    Reset to All Logs
+                    Reset Filter to All
                   </button>
                 </div>
               ) : (
                 filteredLogs.map((entry) => {
-                  const isEmotion = entry.type === 'emotion_shift';
-                  const isMilestone = entry.type === 'milestone';
-                  const isComms = entry.type === 'conversation';
+                  const normalizedType = normalizeCrewLogType(entry.type);
+                  const isEmotion = normalizedType === 'Emotional Shift';
+                  const isMilestone = normalizedType === 'Milestone';
+                  const isComms = normalizedType === 'Communication';
 
                   let iconNode = <Clock className="w-3.5 h-3.5 text-cyan-400" />;
                   let dotColor = 'bg-cyan-400 border-cyan-600';
                   let cardBorder = 'border-slate-800 bg-slate-950/70';
                   let badgeColor = 'bg-cyan-950 text-cyan-300 border-cyan-700/60';
+                  let typeLabel = 'Milestone';
 
                   if (isEmotion) {
+                    typeLabel = 'Emotional Shift';
                     iconNode = <Activity className="w-3.5 h-3.5 text-amber-400" />;
                     dotColor = entry.severity === 'critical' ? 'bg-rose-500 border-rose-700' : 'bg-amber-400 border-amber-600';
                     cardBorder = entry.severity === 'critical' ? 'border-rose-900/50 bg-rose-950/20' : 'border-amber-900/40 bg-amber-950/15';
                     badgeColor = entry.severity === 'critical' ? 'bg-rose-950 text-rose-300 border-rose-700' : 'bg-amber-950 text-amber-300 border-amber-700/60';
                   } else if (isMilestone) {
+                    typeLabel = 'Milestone';
                     iconNode = <Award className="w-3.5 h-3.5 text-emerald-400" />;
                     dotColor = 'bg-emerald-400 border-emerald-600';
                     cardBorder = 'border-emerald-900/40 bg-emerald-950/15';
                     badgeColor = 'bg-emerald-950 text-emerald-300 border-emerald-700/60';
                   } else if (isComms) {
+                    typeLabel = 'Communication';
                     iconNode = <Radio className="w-3.5 h-3.5 text-indigo-400" />;
                     dotColor = 'bg-indigo-400 border-indigo-600';
                     cardBorder = 'border-indigo-900/40 bg-indigo-950/15';
@@ -2259,7 +2320,7 @@ export const OfficerDossierModal: React.FC<OfficerDossierModalProps> = ({
                   }
 
                   return (
-                    <div key={entry.id} className="relative group">
+                    <div key={entry.id} className="relative group" data-log-type={normalizedType}>
                       {/* Timeline node dot */}
                       <div className={`absolute -left-6 top-2.5 w-3 h-3 rounded-full border-2 ${dotColor} shadow-md`} />
 
@@ -2267,7 +2328,7 @@ export const OfficerDossierModal: React.FC<OfficerDossierModalProps> = ({
                       <div className={`p-3 rounded-xl border ${cardBorder} transition-all hover:border-slate-700 shadow-sm space-y-1.5`}>
                         <div className="flex items-center justify-between gap-2">
                           <div className="flex items-center gap-2">
-                            <div className="p-1 rounded bg-black/40 border border-slate-800">
+                            <div className="p-1 rounded bg-black/40 border border-slate-800" title={typeLabel}>
                               {iconNode}
                             </div>
                             <span className="text-xs font-bold font-display uppercase tracking-wider text-slate-100">
@@ -2275,8 +2336,11 @@ export const OfficerDossierModal: React.FC<OfficerDossierModalProps> = ({
                             </span>
                           </div>
                           <div className="flex items-center gap-1.5">
-                            {entry.badge && (
-                              <span className={`text-[10px] font-terminal px-1.5 py-0.5 rounded border uppercase font-semibold ${badgeColor}`}>
+                            <span className={`text-[9px] font-terminal px-1.5 py-0.5 rounded border uppercase font-bold tracking-wider ${badgeColor}`}>
+                              {typeLabel}
+                            </span>
+                            {entry.badge && entry.badge.toUpperCase() !== typeLabel.toUpperCase() && (
+                              <span className="text-[9px] font-terminal px-1.5 py-0.5 rounded bg-slate-900 border border-slate-700 text-slate-300 uppercase">
                                 {entry.badge}
                               </span>
                             )}
@@ -2296,6 +2360,7 @@ export const OfficerDossierModal: React.FC<OfficerDossierModalProps> = ({
                 })
               )}
             </div>
+
           </div>
         )}
 
